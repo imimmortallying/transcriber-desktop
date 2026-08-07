@@ -1,0 +1,14 @@
+{
+  "name": "local-asr-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Локальный Electron-прототип для распознавания речи через GigaAM.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/recognition/runRecognition.js && node --check src/renderer/renderer.js"
+  },
+  "devDependencies": {
+    "electron": "^41.7.1"
+  }
+}

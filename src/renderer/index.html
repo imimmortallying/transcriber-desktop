@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Локальная расшифровка</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Локальная расшифровка</h1>
+      <p class="hint">Выберите аудио- или видеофайл. Распознавание выполняется на этом компьютере.</p>
+
+      <section class="controls" aria-label="Выбор файла">
+        <button id="select-file" type="button">Выбрать файл</button>
+        <output id="file-name">Файл не выбран</output>
+        <button id="transcribe" type="button" disabled>Распознать</button>
+      </section>
+
+      <p id="status" role="status" aria-live="polite">Готово к выбору файла.</p>
+
+      <section aria-labelledby="result-title">
+        <div class="result-heading">
+          <h2 id="result-title">Текст</h2>
+          <button id="save" type="button" disabled>Сохранить .txt</button>
+        </div>
+        <textarea id="transcript" readonly placeholder="Здесь появится расшифровка."></textarea>
+      </section>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>

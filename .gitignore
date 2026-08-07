@@ -9,5 +9,6 @@ pipeline/**/__pycache__/
 pipeline/.pytest_cache/
 pipeline/config.json
 pipeline/data/
+data/
 *.wav
 *.mp4

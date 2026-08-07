@@ -1,0 +1,84 @@
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { stat, writeFile } = require("node:fs/promises");
+const path = require("node:path");
+const { runRecognition } = require("./recognition/runRecognition");
+
+function createWindow() {
+  const window = new BrowserWindow({
+    width: 900,
+    height: 700,
+    minWidth: 640,
+    minHeight: 480,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  window.loadFile(path.join(__dirname, "renderer", "index.html"));
+}
+
+ipcMain.handle("dialog:select-media", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: "Выберите аудио или видео",
+    properties: ["openFile"],
+    filters: [{
+      name: "Аудио и видео",
+      extensions: ["mp3", "wav", "m4a", "ogg", "flac", "mp4", "mkv", "avi", "mov", "webm"],
+    }],
+  });
+
+  return canceled ? null : filePaths[0];
+});
+
+ipcMain.handle("recognition:run", async (event, inputPath) => {
+  if (typeof inputPath !== "string") {
+    throw new Error("Не выбран файл для распознавания.");
+  }
+
+  const fileInfo = await stat(inputPath);
+  if (!fileInfo.isFile()) {
+    throw new Error("Выбранный путь не является файлом.");
+  }
+
+  return runRecognition(inputPath, {
+    onProgress(status) {
+      event.sender.send("recognition:progress", status);
+    },
+  });
+});
+
+ipcMain.handle("dialog:save-transcript", async (_event, transcript) => {
+  if (typeof transcript !== "string" || !transcript.trim()) {
+    throw new Error("Нет текста для сохранения.");
+  }
+
+  const { canceled, filePath } = await dialog.showSaveDialog({
+    title: "Сохранить расшифровку",
+    defaultPath: "transcript.txt",
+    filters: [{ name: "Текст", extensions: ["txt"] }],
+  });
+  if (canceled || !filePath) {
+    return null;
+  }
+
+  await writeFile(filePath, transcript, "utf8");
+  return filePath;
+});
+
+app.whenReady().then(() => {
+  createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});
