@@ -1,0 +1,15 @@
+# GigaAM v3 ASR (MIT). No PyPI release exists; installed straight from the official repo.
+gigaam[torch] @ git+https://github.com/salute-developers/GigaAM.git
+# Silero VAD (MIT), official package - used for speech segmentation in the preprocessing stage.
+silero-vad
+# silero-vad's onnx=True backend needs this at runtime; it's not pulled in
+# automatically as a dependency of silero-vad itself.
+onnxruntime
+# Reads the normalized WAV as a numpy array so VAD segments can be sliced
+# out of it before each is fed to GigaAM.
+soundfile
+numpy
+# HTTP client for the local Ollama structuring backend.
+requests
+# Test runner for the pipeline smoke tests (no test runner exists elsewhere in this repo).
+pytest
