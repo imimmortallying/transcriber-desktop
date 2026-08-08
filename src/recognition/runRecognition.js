@@ -50,6 +50,7 @@ function normalizeSegment(segment) {
     start: Number.isFinite(segment.start) ? segment.start : null,
     end: Number.isFinite(segment.end) ? segment.end : null,
     confidence: Number.isFinite(segment.confidence) ? segment.confidence : null,
+    speaker: typeof segment.speaker === "string" ? segment.speaker : null,
   };
 }
 
@@ -82,9 +83,29 @@ async function runRecognition(inputPath, { onProgress = () => {} } = {}) {
   const parsedSegments = JSON.parse(rawSegments);
 
   return {
+    runId,
     transcript,
     segments: Array.isArray(parsedSegments) ? parsedSegments.map(normalizeSegment) : [],
   };
 }
 
-module.exports = { runRecognition };
+async function runDiarization(runId, { onProgress = () => {} } = {}) {
+  onProgress("Разделяю по говорящим… Это может занять несколько минут.");
+  const diarizationOutput = await runPython([
+    "-m",
+    "asr_pipeline.cli",
+    "--config",
+    pipelineConfig,
+    "diarize",
+    runId,
+  ]);
+  const diarizedSegmentsPath = readCliValue(diarizationOutput, "diarized_segments");
+  const rawSegments = await readFile(diarizedSegmentsPath, "utf8");
+  const parsedSegments = JSON.parse(rawSegments);
+
+  return {
+    segments: Array.isArray(parsedSegments) ? parsedSegments.map(normalizeSegment) : [],
+  };
+}
+
+module.exports = { runRecognition, runDiarization };

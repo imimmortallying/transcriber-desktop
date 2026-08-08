@@ -15,6 +15,7 @@
         <button id="select-file" type="button">Выбрать файл</button>
         <output id="file-name">Файл не выбран</output>
         <button id="transcribe" type="button" disabled>Распознать</button>
+        <button id="diarize" type="button" disabled>Разделить по говорящим</button>
       </section>
 
       <p id="status" role="status" aria-live="polite">Готово к выбору файла.</p>
@@ -22,9 +23,17 @@
       <section aria-labelledby="result-title">
         <div class="result-heading">
           <h2 id="result-title">Текст</h2>
-          <button id="save" type="button" disabled>Сохранить .txt</button>
+          <div class="result-actions">
+            <div class="view-switch" role="group" aria-label="Вид результата">
+              <button id="show-flat" type="button" aria-pressed="true">Плоский текст</button>
+              <button id="show-dialog-merged" type="button" aria-pressed="false" disabled>Диалог со склейкой</button>
+              <button id="show-dialog-raw" type="button" aria-pressed="false" disabled>Диалог без склейки</button>
+            </div>
+            <button id="save" type="button" disabled>Сохранить .txt</button>
+          </div>
         </div>
         <textarea id="transcript" readonly placeholder="Здесь появится расшифровка."></textarea>
+        <div id="dialog" class="dialog" hidden aria-live="polite"></div>
       </section>
     </main>
     <script src="renderer.js"></script>

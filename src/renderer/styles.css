@@ -27,7 +27,9 @@ h2 {
 }
 
 .controls,
-.result-heading {
+.result-heading,
+.result-actions,
+.view-switch {
   display: flex;
   gap: 12px;
   align-items: center;
@@ -48,6 +50,16 @@ h2 {
 .result-heading {
   justify-content: space-between;
   margin-top: 28px;
+}
+
+.result-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.view-switch button[aria-pressed="false"] {
+  color: #315275;
+  background: #e4ebf4;
 }
 
 button {
@@ -75,4 +87,33 @@ textarea {
   resize: vertical;
   color: inherit;
   font: 16px/1.5 "Segoe UI", sans-serif;
+}
+
+.dialog {
+  box-sizing: border-box;
+  min-height: 320px;
+  padding: 16px;
+  border: 1px solid #c9d3e0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.dialog-turn + .dialog-turn {
+  margin-top: 18px;
+}
+
+.dialog-speaker {
+  margin: 0 0 4px;
+  color: #315275;
+  font-weight: 600;
+}
+
+.dialog-text {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.dialog-line {
+  margin: 0;
+  line-height: 1.5;
 }

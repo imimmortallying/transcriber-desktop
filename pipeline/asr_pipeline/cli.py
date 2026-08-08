@@ -12,6 +12,7 @@ from pathlib import Path
 
 from .asr import run_asr
 from .config import PipelineConfig, load_config
+from .diarization import run_diarization
 from .preprocess import run_preprocess
 from .structuring import OllamaBackend
 
@@ -75,6 +76,20 @@ def cmd_structure(args: argparse.Namespace) -> None:
     print(f"structured_document={output_path}")
 
 
+def cmd_diarize(args: argparse.Namespace) -> None:
+    config = load_config(args.config)
+    run_dir = _run_dir(config, args.run_id)
+    normalized_path = run_dir / "normalized.wav"
+    segments_path = run_dir / "segments_asr.json"
+    if not normalized_path.exists() or not segments_path.exists():
+        raise FileNotFoundError(
+            f"Missing ASR artifacts in {run_dir}. Run 'preprocess' and 'asr' first."
+        )
+
+    diarized_path = run_diarization(normalized_path, segments_path, run_dir, config)
+    print(f"diarized_segments={diarized_path}")
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     config = load_config(args.config)
     run_id = args.run_id or _make_run_id(Path(args.input))
@@ -114,6 +129,12 @@ def main() -> None:
     )
     p_asr.add_argument("run_id", help="run_id produced by a prior 'preprocess' call")
     p_asr.set_defaults(func=cmd_asr)
+
+    p_diarize = subparsers.add_parser(
+        "diarize", help="pyannote speaker diarization over an existing ASR result"
+    )
+    p_diarize.add_argument("run_id", help="run_id produced by a prior 'asr' call")
+    p_diarize.set_defaults(func=cmd_diarize)
 
     p_structure = subparsers.add_parser(
         "structure", help="LLM structuring against a template"

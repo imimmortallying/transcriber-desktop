@@ -26,5 +26,9 @@
     },
     "template_path": "templates/example_template.md"
   },
+  "diarization": {
+    "model_name": "pyannote/speaker-diarization-community-1",
+    "hf_token": "REPLACE_ME"
+  },
   "data_dir": "../data/pipeline"
 }

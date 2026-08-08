@@ -45,11 +45,18 @@ class StructuringConfig:
 
 
 @dataclass(frozen=True)
+class DiarizationConfig:
+    model_name: str
+    hf_token: str | None
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     ffmpeg: FfmpegConfig
     vad: VadConfig
     asr: AsrConfig
     structuring: StructuringConfig
+    diarization: DiarizationConfig
     data_dir: Path
 
 
@@ -113,6 +120,14 @@ def load_config(config_path: Path) -> PipelineConfig:
                 model=ollama_raw["model"],
             ),
             template_path=_resolve(base_dir, structuring_raw["template_path"]),
+        ),
+        # Optional for backward compatibility with existing local config.json
+        # files: ASR continues to work until diarization is explicitly enabled.
+        diarization=DiarizationConfig(
+            model_name=raw.get("diarization", {}).get(
+                "model_name", "pyannote/speaker-diarization-community-1"
+            ),
+            hf_token=raw.get("diarization", {}).get("hf_token"),
         ),
         data_dir=_resolve(base_dir, raw.get("data_dir", "../data/pipeline")),
     )

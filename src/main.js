@@ -1,7 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const { stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
-const { runRecognition } = require("./recognition/runRecognition");
+const { runRecognition, runDiarization } = require("./recognition/runRecognition");
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -43,6 +43,18 @@ ipcMain.handle("recognition:run", async (event, inputPath) => {
   }
 
   return runRecognition(inputPath, {
+    onProgress(status) {
+      event.sender.send("recognition:progress", status);
+    },
+  });
+});
+
+ipcMain.handle("diarization:run", async (event, runId) => {
+  if (typeof runId !== "string" || !runId) {
+    throw new Error("Сначала выполните распознавание файла.");
+  }
+
+  return runDiarization(runId, {
     onProgress(status) {
       event.sender.send("recognition:progress", status);
     },
