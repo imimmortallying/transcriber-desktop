@@ -15,7 +15,7 @@
         <button id="select-file" type="button">Выбрать файл</button>
         <output id="file-name">Файл не выбран</output>
         <button id="transcribe" type="button" disabled>Распознать</button>
-        <button id="diarize" type="button" disabled>Разделить по говорящим</button>
+        <button id="open-saved" type="button">Открыть сохранённый результат</button>
       </section>
 
       <p id="status" role="status" aria-live="polite">Готово к выбору файла.</p>
@@ -24,16 +24,30 @@
         <div class="result-heading">
           <h2 id="result-title">Текст</h2>
           <div class="result-actions">
-            <div class="view-switch" role="group" aria-label="Вид результата">
-              <button id="show-flat" type="button" aria-pressed="true">Плоский текст</button>
-              <button id="show-dialog-merged" type="button" aria-pressed="false" disabled>Диалог со склейкой</button>
-              <button id="show-dialog-raw" type="button" aria-pressed="false" disabled>Диалог без склейки</button>
-            </div>
+            <button id="copy" type="button" disabled>Копировать чистый текст</button>
             <button id="save" type="button" disabled>Сохранить .txt</button>
           </div>
         </div>
-        <textarea id="transcript" readonly placeholder="Здесь появится расшифровка."></textarea>
-        <div id="dialog" class="dialog" hidden aria-live="polite"></div>
+        <div id="editor-toolbar" class="editor-toolbar" aria-label="Действия с документом">
+          <label class="speaker-name-field">
+            <span>Имя нового говорящего</span>
+            <input id="speaker-name" type="text" placeholder="Например, Следователь Карамчаков" autocomplete="off" disabled />
+          </label>
+          <button id="add-speaker" type="button" disabled>Добавить говорящего</button>
+          <label class="speaker-picker">
+            <span>Говорящий</span>
+            <select id="speaker-choice" disabled>
+              <option value="">Выберите говорящего</option>
+            </select>
+          </label>
+          <button id="assign-speaker" type="button" disabled>Подписать абзац</button>
+          <button id="split-replica" type="button" disabled>Новая реплика</button>
+          <button id="insert-remark" type="button" disabled>Вставить ремарку</button>
+        </div>
+        <div id="editor" class="editor" aria-live="polite">
+          <p class="editor-placeholder">Здесь появится расшифровка.</p>
+        </div>
+        <p class="editor-hint">Поставьте курсор в текст и используйте действия сверху. Ctrl+Enter создаёт реплику, Alt+Enter — ремарку.</p>
       </section>
     </main>
     <script src="renderer.js"></script>

@@ -28,8 +28,7 @@ h2 {
 
 .controls,
 .result-heading,
-.result-actions,
-.view-switch {
+.result-actions {
   display: flex;
   gap: 12px;
   align-items: center;
@@ -57,11 +56,6 @@ h2 {
   justify-content: flex-end;
 }
 
-.view-switch button[aria-pressed="false"] {
-  color: #315275;
-  background: #e4ebf4;
-}
-
 button {
   padding: 10px 16px;
   border: 0;
@@ -77,43 +71,98 @@ button:disabled {
   opacity: 0.55;
 }
 
-textarea {
+.editor {
   box-sizing: border-box;
   width: 100%;
   min-height: 320px;
-  padding: 16px;
-  border: 1px solid #c9d3e0;
-  border-radius: 6px;
-  resize: vertical;
-  color: inherit;
-  font: 16px/1.5 "Segoe UI", sans-serif;
+  padding: 20px 0;
+  background: #fff;
 }
 
-.dialog {
-  box-sizing: border-box;
-  min-height: 320px;
-  padding: 16px;
-  border: 1px solid #c9d3e0;
+.editor-placeholder {
+  margin: 0;
+  color: #536176;
+}
+
+.editor-hint {
+  margin: 8px 0 0;
+  color: #536176;
+  font-size: 14px;
+}
+
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #d9e0ea;
   border-radius: 6px;
   background: #fff;
 }
 
-.dialog-turn + .dialog-turn {
-  margin-top: 18px;
+.speaker-picker {
+  display: grid;
+  gap: 4px;
+  color: #536176;
+  font-size: 14px;
 }
 
-.dialog-speaker {
-  margin: 0 0 4px;
-  color: #315275;
+.speaker-name-field {
+  display: grid;
+  gap: 4px;
+  color: #536176;
+  font-size: 14px;
+}
+
+.speaker-picker select,
+.speaker-name-field input {
+  min-width: 220px;
+  padding: 7px;
+  border: 1px solid #c9d3e0;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.document-paragraph {
+  display: grid;
+  grid-template-columns: 126px minmax(0, 1fr);
+  gap: 16px;
+  padding: 6px 0;
+}
+
+.paragraph-timecode {
+  padding-top: 2px;
+  color: #536176;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.paragraph-content {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.speaker-label {
+  margin-right: 6px;
   font-weight: 600;
 }
 
-.dialog-text {
-  margin: 0;
-  line-height: 1.5;
+.document-text {
+  display: inline;
+  outline: none;
+  white-space: pre-wrap;
 }
 
-.dialog-line {
-  margin: 0;
-  line-height: 1.5;
+.document-text:empty::before {
+  color: #758195;
+  content: attr(data-placeholder);
+}
+
+@media (max-width: 700px) {
+  .document-paragraph {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
 }

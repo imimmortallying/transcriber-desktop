@@ -54,6 +54,22 @@ function normalizeSegment(segment) {
   };
 }
 
+async function readSavedSegments(segmentsPath) {
+  const rawSegments = await readFile(segmentsPath, "utf8");
+  let parsedSegments;
+  try {
+    parsedSegments = JSON.parse(rawSegments);
+  } catch {
+    throw new Error("Файл segments_asr.json содержит некорректный JSON.");
+  }
+
+  if (!Array.isArray(parsedSegments)) {
+    throw new Error("Файл segments_asr.json должен содержать массив сегментов.");
+  }
+
+  return parsedSegments.map(normalizeSegment);
+}
+
 async function runRecognition(inputPath, { onProgress = () => {} } = {}) {
   onProgress("Подготавливаю аудио…");
   const preprocessOutput = await runPython([
@@ -76,36 +92,16 @@ async function runRecognition(inputPath, { onProgress = () => {} } = {}) {
     runId,
   ]);
   const transcriptPath = readCliValue(asrOutput, "transcript");
-  const [transcript, rawSegments] = await Promise.all([
+  const [transcript, segments] = await Promise.all([
     readFile(transcriptPath, "utf8"),
-    readFile(path.join(path.dirname(transcriptPath), "segments_asr.json"), "utf8"),
+    readSavedSegments(path.join(path.dirname(transcriptPath), "segments_asr.json")),
   ]);
-  const parsedSegments = JSON.parse(rawSegments);
 
   return {
     runId,
     transcript,
-    segments: Array.isArray(parsedSegments) ? parsedSegments.map(normalizeSegment) : [],
+    segments,
   };
 }
 
-async function runDiarization(runId, { onProgress = () => {} } = {}) {
-  onProgress("Разделяю по говорящим… Это может занять несколько минут.");
-  const diarizationOutput = await runPython([
-    "-m",
-    "asr_pipeline.cli",
-    "--config",
-    pipelineConfig,
-    "diarize",
-    runId,
-  ]);
-  const diarizedSegmentsPath = readCliValue(diarizationOutput, "diarized_segments");
-  const rawSegments = await readFile(diarizedSegmentsPath, "utf8");
-  const parsedSegments = JSON.parse(rawSegments);
-
-  return {
-    segments: Array.isArray(parsedSegments) ? parsedSegments.map(normalizeSegment) : [],
-  };
-}
-
-module.exports = { runRecognition, runDiarization };
+module.exports = { readSavedSegments, runRecognition };

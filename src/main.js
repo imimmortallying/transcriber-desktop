@@ -1,7 +1,7 @@
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, ipcMain } = require("electron");
 const { stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
-const { runRecognition, runDiarization } = require("./recognition/runRecognition");
+const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -32,6 +32,27 @@ ipcMain.handle("dialog:select-media", async () => {
   return canceled ? null : filePaths[0];
 });
 
+ipcMain.handle("dialog:open-saved-segments", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: "Открыть сохранённый результат",
+    properties: ["openFile"],
+    filters: [{ name: "ASR-сегменты", extensions: ["json"] }],
+  });
+  if (canceled || !filePaths[0]) {
+    return null;
+  }
+
+  const segmentsPath = filePaths[0];
+  if (path.basename(segmentsPath).toLowerCase() !== "segments_asr.json") {
+    throw new Error("Выберите файл segments_asr.json из сохранённого прогона.");
+  }
+
+  return {
+    sourcePath: segmentsPath,
+    segments: await readSavedSegments(segmentsPath),
+  };
+});
+
 ipcMain.handle("recognition:run", async (event, inputPath) => {
   if (typeof inputPath !== "string") {
     throw new Error("Не выбран файл для распознавания.");
@@ -49,16 +70,12 @@ ipcMain.handle("recognition:run", async (event, inputPath) => {
   });
 });
 
-ipcMain.handle("diarization:run", async (event, runId) => {
-  if (typeof runId !== "string" || !runId) {
-    throw new Error("Сначала выполните распознавание файла.");
+ipcMain.handle("clipboard:write-text", (_event, text) => {
+  if (typeof text !== "string") {
+    throw new Error("Не удалось подготовить текст для копирования.");
   }
 
-  return runDiarization(runId, {
-    onProgress(status) {
-      event.sender.send("recognition:progress", status);
-    },
-  });
+  clipboard.writeText(text);
 });
 
 ipcMain.handle("dialog:save-transcript", async (_event, transcript) => {
