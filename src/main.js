@@ -1,4 +1,4 @@
-const { app, BrowserWindow, clipboard, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } = require("electron");
 const { stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
@@ -97,6 +97,7 @@ ipcMain.handle("dialog:save-transcript", async (_event, transcript) => {
 });
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
   createWindow();
 
   app.on("activate", () => {
