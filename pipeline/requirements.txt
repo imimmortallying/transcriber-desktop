@@ -12,7 +12,5 @@ soundfile
 # soundfile waveform, so torchcodec is not required on Windows.
 pyannote.audio
 numpy
-# HTTP client for the local Ollama structuring backend.
-requests
 # Test runner for the pipeline smoke tests (no test runner exists elsewhere in this repo).
 pytest

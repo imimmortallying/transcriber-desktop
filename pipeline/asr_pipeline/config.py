@@ -32,19 +32,6 @@ class AsrConfig:
 
 
 @dataclass(frozen=True)
-class OllamaConfig:
-    host: str
-    model: str
-
-
-@dataclass(frozen=True)
-class StructuringConfig:
-    backend: str
-    ollama: OllamaConfig
-    template_path: Path
-
-
-@dataclass(frozen=True)
 class DiarizationConfig:
     model_name: str
     hf_token: str | None
@@ -55,7 +42,6 @@ class PipelineConfig:
     ffmpeg: FfmpegConfig
     vad: VadConfig
     asr: AsrConfig
-    structuring: StructuringConfig
     diarization: DiarizationConfig
     data_dir: Path
 
@@ -84,8 +70,6 @@ def load_config(config_path: Path) -> PipelineConfig:
         ffmpeg_raw = raw["ffmpeg"]
         vad_raw = raw["vad"]
         asr_raw = raw["asr"]
-        structuring_raw = raw["structuring"]
-        ollama_raw = structuring_raw["ollama"]
     except KeyError as error:
         raise ValueError(f"Missing required config section: {error}") from error
 
@@ -112,14 +96,6 @@ def load_config(config_path: Path) -> PipelineConfig:
             language=asr_raw.get("language", "ru"),
             confidence_threshold=float(asr_raw["confidence_threshold"]),
             max_symbols_per_step=int(asr_raw.get("max_symbols_per_step", 10)),
-        ),
-        structuring=StructuringConfig(
-            backend=structuring_raw["backend"],
-            ollama=OllamaConfig(
-                host=ollama_raw["host"],
-                model=ollama_raw["model"],
-            ),
-            template_path=_resolve(base_dir, structuring_raw["template_path"]),
         ),
         # Optional for backward compatibility with existing local config.json
         # files: ASR continues to work until diarization is explicitly enabled.

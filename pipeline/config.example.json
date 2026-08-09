@@ -18,14 +18,6 @@
     "confidence_threshold": 0.5,
     "max_symbols_per_step": 10
   },
-  "structuring": {
-    "backend": "ollama",
-    "ollama": {
-      "host": "http://localhost:11434",
-      "model": "REPLACE_ME"
-    },
-    "template_path": "templates/example_template.md"
-  },
   "diarization": {
     "model_name": "pyannote/speaker-diarization-community-1",
     "hf_token": "REPLACE_ME"
