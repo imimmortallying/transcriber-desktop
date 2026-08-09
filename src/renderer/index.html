@@ -26,6 +26,9 @@
           <div class="result-actions">
             <button id="copy" type="button" disabled>Копировать чистый текст</button>
             <button id="save" type="button" disabled>Сохранить .txt</button>
+            <button id="save-project" type="button" disabled>Сохранить проект</button>
+            <button id="reset-recognized" type="button" disabled>Сбросить к распознанному</button>
+            <button id="toggle-edits" type="button" disabled>Показать распознанное</button>
           </div>
         </div>
         <div id="editor-toolbar" class="editor-toolbar" aria-label="Действия с документом">
@@ -44,6 +47,7 @@
           <button id="split-replica" type="button" disabled>Новая реплика</button>
           <button id="insert-remark" type="button" disabled>Вставить ремарку</button>
         </div>
+        <p id="document-mode">Просмотр: нет документа</p>
         <div id="editor" class="editor" aria-live="polite">
           <p class="editor-placeholder">Здесь появится расшифровка.</p>
         </div>

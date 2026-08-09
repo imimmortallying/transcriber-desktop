@@ -92,15 +92,17 @@ async function runRecognition(inputPath, { onProgress = () => {} } = {}) {
     runId,
   ]);
   const transcriptPath = readCliValue(asrOutput, "transcript");
+  const segmentsPath = path.join(path.dirname(transcriptPath), "segments_asr.json");
   const [transcript, segments] = await Promise.all([
     readFile(transcriptPath, "utf8"),
-    readSavedSegments(path.join(path.dirname(transcriptPath), "segments_asr.json")),
+    readSavedSegments(segmentsPath),
   ]);
 
   return {
     runId,
     transcript,
     segments,
+    segmentsPath,
   };
 }
 
