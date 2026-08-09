@@ -102,13 +102,6 @@ button:disabled {
   background: #fff;
 }
 
-.speaker-picker {
-  display: grid;
-  gap: 4px;
-  color: #536176;
-  font-size: 14px;
-}
-
 .speaker-name-field {
   display: grid;
   gap: 4px;
@@ -116,7 +109,6 @@ button:disabled {
   font-size: 14px;
 }
 
-.speaker-picker select,
 .speaker-name-field input {
   min-width: 220px;
   padding: 7px;
@@ -126,6 +118,7 @@ button:disabled {
 }
 
 .document-paragraph {
+  position: relative;
   display: grid;
   grid-template-columns: 126px minmax(0, 1fr);
   gap: 16px;
@@ -144,9 +137,62 @@ button:disabled {
   line-height: 1.5;
 }
 
-.speaker-label {
-  margin-right: 6px;
-  font-weight: 600;
+.speaker-control {
+  margin: 0 6px 4px 0;
+  padding: 4px 8px;
+  border: 1px solid #c9d3e0;
+  color: #536176;
+  background: #e9eef6;
+  font-size: 13px;
+}
+
+.speaker-popover {
+  position: absolute;
+  z-index: 1;
+  top: 30px;
+  left: 142px;
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+  padding: 8px;
+  border: 1px solid #c9d3e0;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgb(23 32 51 / 18%);
+}
+
+.speaker-popover button {
+  padding: 6px 8px;
+  color: #172033;
+  text-align: left;
+  background: #f4f7fb;
+}
+
+.speaker-popover button[aria-pressed="true"] {
+  color: #fff;
+  background: #1769d3;
+}
+
+.speaker-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.speaker-list:empty::before {
+  color: #536176;
+  content: "Созданных говорящих пока нет";
+  font-size: 14px;
+}
+
+.speaker-list li {
+  padding: 4px 8px;
+  border-radius: 12px;
+  background: #f4f7fb;
+  font-size: 14px;
 }
 
 .document-text {
@@ -164,5 +210,10 @@ button:disabled {
   .document-paragraph {
     grid-template-columns: 1fr;
     gap: 2px;
+  }
+
+  .speaker-popover {
+    top: 52px;
+    left: 0;
   }
 }

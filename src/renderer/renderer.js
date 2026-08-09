@@ -8,10 +8,7 @@ const resetRecognizedButton = document.querySelector("#reset-recognized");
 const toggleEditsButton = document.querySelector("#toggle-edits");
 const addSpeakerButton = document.querySelector("#add-speaker");
 const speakerNameInput = document.querySelector("#speaker-name");
-const speakerChoice = document.querySelector("#speaker-choice");
-const assignSpeakerButton = document.querySelector("#assign-speaker");
-const splitReplicaButton = document.querySelector("#split-replica");
-const insertRemarkButton = document.querySelector("#insert-remark");
+const speakerList = document.querySelector("#speaker-list");
 const editorToolbar = document.querySelector("#editor-toolbar");
 const fileName = document.querySelector("#file-name");
 const status = document.querySelector("#status");
@@ -32,6 +29,7 @@ let paragraphs = [];
 let speakers = [];
 let nextParagraphId = 1;
 let nextSpeakerId = 1;
+let openSpeakerPopoverParagraphId = null;
 
 function getSpeakerColor(index) {
   return `hsl(${(index * 137.508) % 360} 58% 42%)`;
@@ -87,10 +85,6 @@ function setRunning(running) {
       : "Просмотр: правки";
   addSpeakerButton.disabled = running || readOnly;
   speakerNameInput.disabled = running || readOnly;
-  speakerChoice.disabled = running || readOnly || !speakers.length;
-  assignSpeakerButton.disabled = running || readOnly || !paragraphs.length || !speakerChoice.value;
-  splitReplicaButton.disabled = running || readOnly || !paragraphs.length || !speakerChoice.value;
-  insertRemarkButton.disabled = running || readOnly || !paragraphs.length;
 }
 
 function formatTimecode(seconds) {
@@ -208,13 +202,13 @@ function restoreProject(project) {
   });
 
   const paragraphIds = new Set();
+  let migratedRemark = false;
   const restoredParagraphs = project.paragraphs.map((paragraph) => {
     assertProject(paragraph && typeof paragraph === "object", "некорректный абзац.");
     assertProject(Number.isSafeInteger(paragraph.id) && paragraph.id > 0, "некорректный id абзаца.");
     assertProject(!paragraphIds.has(paragraph.id), "повторяющийся id абзаца.");
     assertProject(["text", "replica", "remark"].includes(paragraph.type), "некорректный тип абзаца.");
     assertProject(typeof paragraph.text === "string", "некорректный текст абзаца.");
-    assertProject(paragraph.speakerId === null || speakerIds.has(paragraph.speakerId), "абзац ссылается на неизвестного говорящего.");
     assertProject(isStoredTime(paragraph.start), "некорректный таймкод абзаца.");
     assertProject(Array.isArray(paragraph.timing), "отсутствует карта таймингов абзаца.");
     const timing = paragraph.timing.map((part) => {
@@ -224,12 +218,17 @@ function restoreProject(project) {
       assertProject(isStoredTime(part.start), "некорректный таймкод в карте таймингов.");
       return { from: part.from, to: part.to, start: part.start };
     });
+    const type = paragraph.type === "remark" ? "text" : paragraph.type;
+    const speakerId = paragraph.type === "remark" ? null : paragraph.speakerId;
+    assertProject(speakerId === null || speakerIds.has(speakerId), "абзац ссылается на неизвестного говорящего.");
+    assertProject(type === "replica" || speakerId === null, "обычный абзац не может иметь говорящего.");
+    migratedRemark ||= paragraph.type === "remark";
     paragraphIds.add(paragraph.id);
     return {
       id: paragraph.id,
-      type: paragraph.type,
+      type,
       text: paragraph.text,
-      speakerId: paragraph.speakerId,
+      speakerId,
       start: paragraph.start,
       timing,
     };
@@ -239,6 +238,7 @@ function restoreProject(project) {
   speakers = restoredSpeakers;
   nextParagraphId = Math.max(0, ...paragraphs.map((paragraph) => paragraph.id)) + 1;
   nextSpeakerId = Math.max(0, ...speakers.map((speaker) => speaker.id)) + 1;
+  return { migratedRemark };
 }
 
 function serializeProject() {
@@ -252,16 +252,14 @@ function serializeProject() {
   };
 }
 
-function updateSpeakerChoices() {
-  const selectedId = speakerChoice.value;
-  speakerChoice.replaceChildren(new Option("Выберите говорящего", ""));
+function renderSpeakerList() {
+  speakerList.replaceChildren();
   for (const speaker of speakers) {
-    speakerChoice.add(new Option(speaker.name, String(speaker.id)));
+    const item = document.createElement("li");
+    item.style.color = speaker.color;
+    item.textContent = speaker.name;
+    speakerList.append(item);
   }
-  speakerChoice.value = speakers.some((speaker) => String(speaker.id) === selectedId)
-    ? selectedId
-    : "";
-  setRunning(isRunning);
 }
 
 function createSpeaker() {
@@ -272,20 +270,17 @@ function createSpeaker() {
     return;
   }
 
-  let speaker = speakers.find((item) => item.name === normalizedName);
-  if (!speaker) {
-    speaker = {
+  if (!speakers.some((item) => item.name === normalizedName)) {
+    speakers.push({
       id: nextSpeakerId++,
       name: normalizedName,
       color: getSpeakerColor(speakers.length),
-    };
-    speakers.push(speaker);
+    });
     markProjectDirty();
   }
 
-  updateSpeakerChoices();
-  speakerChoice.value = String(speaker.id);
   speakerNameInput.value = "";
+  renderSpeakerList();
   setRunning(isRunning);
 }
 
@@ -371,20 +366,26 @@ function rescaleTiming(paragraph, nextText) {
   paragraph.text = nextText;
 }
 
-function focusParagraph(paragraphId) {
+function focusParagraph(paragraphId, offset = 0) {
   const textElement = editor.querySelector(`[data-paragraph-id="${paragraphId}"]`);
   textElement?.focus();
   if (textElement) {
     const range = document.createRange();
-    range.selectNodeContents(textElement);
-    range.collapse(true);
+    const textNode = textElement.firstChild;
+    if (textNode?.nodeType === Node.TEXT_NODE) {
+      range.setStart(textNode, Math.min(offset, textNode.textContent.length));
+      range.collapse(true);
+    } else {
+      range.selectNodeContents(textElement);
+      range.collapse(true);
+    }
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
   }
 }
 
-function splitDocument(kind) {
+function splitParagraph() {
   const context = getSelectionContext();
   if (!context) {
     return;
@@ -392,55 +393,74 @@ function splitDocument(kind) {
 
   const { paragraph, textElement, offset } = context;
   const sourceText = textElement.textContent || "";
+  const leftText = sourceText.slice(0, offset);
+  const rightText = sourceText.slice(offset);
+  if (!leftText.trim() || !rightText.trim()) {
+    status.textContent = "Ctrl+Enter делит только текст с обеих сторон курсора.";
+    return;
+  }
   const originalStart = paragraph.start;
   const { left, right, point } = splitTiming(paragraph, offset);
   const index = paragraphs.findIndex((item) => item.id === paragraph.id);
-  paragraph.text = sourceText.slice(0, offset);
+  paragraph.text = leftText;
   paragraph.timing = left;
   syncStart(paragraph, originalStart);
   markProjectDirty();
 
-  if (kind === "replica") {
-    const nextParagraph = createParagraph({
-      type: "replica",
-      text: sourceText.slice(offset),
-      speakerId: Number(speakerChoice.value),
-      start: point,
-      timing: right,
-    });
-    syncStart(nextParagraph, point);
-    paragraphs.splice(index + 1, 0, nextParagraph);
-    renderEditor();
-    focusParagraph(nextParagraph.id);
-    return;
-  }
-
-  const remark = createParagraph({ type: "remark", start: point });
-  const continuation = createParagraph({
-    type: paragraph.type,
-    text: sourceText.slice(offset),
-    speakerId: paragraph.speakerId,
+  const nextParagraph = createParagraph({
+    type: "replica",
+    text: rightText,
+    speakerId: paragraph.type === "replica" ? paragraph.speakerId : null,
     start: point,
     timing: right,
   });
-  syncStart(continuation, point);
-  const inserted = continuation.text ? [remark, continuation] : [remark];
-  paragraphs.splice(index + 1, 0, ...inserted);
+  syncStart(nextParagraph, point);
+  paragraphs.splice(index + 1, 0, nextParagraph);
   renderEditor();
-  focusParagraph(remark.id);
+  focusParagraph(nextParagraph.id);
 }
 
-function assignSpeaker() {
-  const context = getSelectionContext();
-  if (!context || !speakerChoice.value) {
+function mergeParagraphWithPrevious(paragraph) {
+  const index = paragraphs.findIndex((item) => item.id === paragraph.id);
+  if (index <= 0) {
+    return false;
+  }
+
+  const previous = paragraphs[index - 1];
+  const splitOffset = previous.text.length;
+  previous.text += paragraph.text;
+  previous.timing.push(...paragraph.timing.map((part) => ({
+    ...part,
+    from: part.from + splitOffset,
+    to: part.to + splitOffset,
+  })));
+  syncStart(previous);
+  paragraphs.splice(index, 1);
+  openSpeakerPopoverParagraphId = null;
+  markProjectDirty();
+  renderEditor();
+  focusParagraph(previous.id, splitOffset);
+  return true;
+}
+
+function toggleSpeakerPopover(paragraphId) {
+  openSpeakerPopoverParagraphId = openSpeakerPopoverParagraphId === paragraphId
+    ? null
+    : paragraphId;
+  renderEditor();
+}
+
+function setParagraphSpeaker(paragraphId, speakerId) {
+  const paragraph = getParagraph(paragraphId);
+  if (!paragraph) {
     return;
   }
 
-  context.paragraph.type = "replica";
-  context.paragraph.speakerId = Number(speakerChoice.value);
+  paragraph.type = speakerId === null ? "text" : "replica";
+  paragraph.speakerId = speakerId;
+  openSpeakerPopoverParagraphId = null;
   markProjectDirty();
   renderEditor();
-  focusParagraph(context.paragraph.id);
 }
 
 function renderEditor() {
@@ -469,9 +489,7 @@ function renderEditor() {
     textElement.className = "document-text";
     textElement.contentEditable = String(!isRunning && !visibleDocument.readOnly);
     textElement.dataset.paragraphId = String(paragraph.id);
-    textElement.dataset.placeholder = paragraph.type === "remark"
-      ? "Введите ремарку"
-      : "Текст протокола";
+    textElement.dataset.placeholder = "Текст протокола";
     textElement.textContent = paragraph.text;
     if (!visibleDocument.readOnly) {
       textElement.addEventListener("input", () => {
@@ -479,17 +497,28 @@ function renderEditor() {
         markProjectDirty();
       });
       textElement.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter") {
+        if (event.key === "Enter") {
+          if (!event.ctrlKey) {
+            return;
+          }
+
+          event.preventDefault();
+          splitParagraph();
           return;
         }
 
-        event.preventDefault();
-        if (event.ctrlKey && speakerChoice.value) {
-          splitDocument("replica");
-        } else if (event.altKey) {
-          splitDocument("remark");
-        } else {
-          status.textContent = "Используйте Ctrl+Enter для реплики или Alt+Enter для ремарки.";
+        if (event.key !== "Backspace") {
+          return;
+        }
+
+        const context = getSelectionContext();
+        if (!context || context.offset !== 0) {
+          return;
+        }
+
+        if (paragraphs.findIndex((item) => item.id === context.paragraph.id) > 0) {
+          event.preventDefault();
+          mergeParagraphWithPrevious(context.paragraph);
         }
       });
     }
@@ -497,12 +526,41 @@ function renderEditor() {
     const speaker = paragraph.type === "replica"
       ? getSpeaker(paragraph.speakerId, visibleDocument.speakers)
       : null;
-    if (speaker) {
-      const label = document.createElement("span");
-      label.className = "speaker-label";
-      label.style.color = speaker.color;
-      label.textContent = `${speaker.name}:`;
-      content.append(label);
+    if (!visibleDocument.readOnly && paragraph.type === "replica") {
+      const speakerControl = document.createElement("button");
+      speakerControl.className = "speaker-control";
+      speakerControl.type = "button";
+      speakerControl.disabled = isRunning;
+      speakerControl.textContent = speaker ? speaker.name : "Назначить говорящего";
+      if (speaker) {
+        speakerControl.style.borderColor = speaker.color;
+      }
+      speakerControl.addEventListener("click", () => toggleSpeakerPopover(paragraph.id));
+      content.append(speakerControl);
+
+      if (openSpeakerPopoverParagraphId === paragraph.id) {
+        const popover = document.createElement("div");
+        popover.className = "speaker-popover";
+        popover.dataset.speakerPopover = "true";
+        const noSpeakerButton = document.createElement("button");
+        noSpeakerButton.type = "button";
+        noSpeakerButton.disabled = isRunning;
+        noSpeakerButton.textContent = "Без говорящего";
+        noSpeakerButton.setAttribute("aria-pressed", String(paragraph.speakerId === null));
+        noSpeakerButton.addEventListener("click", () => setParagraphSpeaker(paragraph.id, null));
+        popover.append(noSpeakerButton);
+        for (const availableSpeaker of speakers) {
+          const choice = document.createElement("button");
+          choice.type = "button";
+          choice.disabled = isRunning;
+          choice.textContent = availableSpeaker.name;
+          choice.style.color = availableSpeaker.color;
+          choice.setAttribute("aria-pressed", String(paragraph.speakerId === availableSpeaker.id));
+          choice.addEventListener("click", () => setParagraphSpeaker(paragraph.id, availableSpeaker.id));
+          popover.append(choice);
+        }
+        paragraphElement.append(popover);
+      }
     }
     content.append(textElement);
     paragraphElement.append(timecode, content);
@@ -525,8 +583,9 @@ selectFileButton.addEventListener("click", async () => {
   isProjectDirty = false;
   hasProjectEdits = false;
   isShowingRecognized = false;
+  openSpeakerPopoverParagraphId = null;
   fileName.value = filePath;
-  updateSpeakerChoices();
+  renderSpeakerList();
   renderEditor();
   status.textContent = "Файл выбран. Можно начать распознавание.";
   setRunning(false);
@@ -544,7 +603,8 @@ transcribeButton.addEventListener("click", async () => {
   isProjectDirty = false;
   hasProjectEdits = false;
   isShowingRecognized = false;
-  updateSpeakerChoices();
+  openSpeakerPopoverParagraphId = null;
+  renderSpeakerList();
   renderEditor();
   status.textContent = "Запускаю распознавание…";
   try {
@@ -585,13 +645,16 @@ openSavedButton.addEventListener("click", async () => {
     isProjectDirty = false;
     hasProjectEdits = false;
     isShowingRecognized = false;
+    openSpeakerPopoverParagraphId = null;
     resetEditorState();
     fileName.value = result.sourcePath;
     setRecognizedSource(result.segments);
     if (result.project) {
-      restoreProject(result.project);
+      const { migratedRemark } = restoreProject(result.project);
       hasProjectEdits = true;
-      status.textContent = "Открыт сохранённый проект редактора.";
+      status.textContent = migratedRemark
+        ? "Открыт сохранённый проект. Ремарки из старого файла преобразованы в обычный текст."
+        : "Открыт сохранённый проект редактора.";
     } else {
       loadSegments(result.segments);
       status.textContent = result.segments.length
@@ -600,7 +663,7 @@ openSavedButton.addEventListener("click", async () => {
     }
     sourceSegmentsPath = result.sourcePath;
     isProjectDirty = false;
-    updateSpeakerChoices();
+    renderSpeakerList();
   } catch (error) {
     status.textContent = `Ошибка открытия: ${error.message}`;
   } finally {
@@ -622,10 +685,16 @@ speakerNameInput.addEventListener("keydown", (event) => {
     createSpeaker();
   }
 });
-speakerChoice.addEventListener("change", () => setRunning(isRunning));
-assignSpeakerButton.addEventListener("click", assignSpeaker);
-splitReplicaButton.addEventListener("click", () => splitDocument("replica"));
-insertRemarkButton.addEventListener("click", () => splitDocument("remark"));
+document.addEventListener("click", (event) => {
+  if (openSpeakerPopoverParagraphId === null || !(event.target instanceof Element)) {
+    return;
+  }
+  if (event.target.closest(".speaker-control, .speaker-popover")) {
+    return;
+  }
+  openSpeakerPopoverParagraphId = null;
+  renderEditor();
+});
 
 copyButton.addEventListener("click", async () => {
   try {
@@ -685,7 +754,8 @@ resetRecognizedButton.addEventListener("click", async () => {
     isProjectDirty = false;
     hasProjectEdits = false;
     isShowingRecognized = false;
-    updateSpeakerChoices();
+    openSpeakerPopoverParagraphId = null;
+    renderSpeakerList();
     status.textContent = segments.length
       ? `Восстановлен распознанный текст: сегментов — ${segments.length}.`
       : "В сохранённом результате нет сегментов.";

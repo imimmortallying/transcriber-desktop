@@ -37,21 +37,13 @@
             <input id="speaker-name" type="text" placeholder="Например, Следователь Карамчаков" autocomplete="off" disabled />
           </label>
           <button id="add-speaker" type="button" disabled>Добавить говорящего</button>
-          <label class="speaker-picker">
-            <span>Говорящий</span>
-            <select id="speaker-choice" disabled>
-              <option value="">Выберите говорящего</option>
-            </select>
-          </label>
-          <button id="assign-speaker" type="button" disabled>Подписать абзац</button>
-          <button id="split-replica" type="button" disabled>Новая реплика</button>
-          <button id="insert-remark" type="button" disabled>Вставить ремарку</button>
+          <ul id="speaker-list" class="speaker-list" aria-label="Созданные говорящие"></ul>
         </div>
         <p id="document-mode">Просмотр: нет документа</p>
         <div id="editor" class="editor" aria-live="polite">
           <p class="editor-placeholder">Здесь появится расшифровка.</p>
         </div>
-        <p class="editor-hint">Поставьте курсор в текст и используйте действия сверху. Ctrl+Enter создаёт реплику, Alt+Enter — ремарку.</p>
+        <p class="editor-hint">Enter создаёт новый абзац. Назначайте или меняйте говорящего кнопкой рядом с нужным абзацем.</p>
       </section>
     </main>
     <script src="renderer.js"></script>
