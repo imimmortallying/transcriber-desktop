@@ -6,6 +6,8 @@ const saveButton = document.querySelector("#save");
 const saveProjectButton = document.querySelector("#save-project");
 const resetRecognizedButton = document.querySelector("#reset-recognized");
 const toggleEditsButton = document.querySelector("#toggle-edits");
+const revealRunButton = document.querySelector("#reveal-run");
+const deleteRunButton = document.querySelector("#delete-run");
 const addSpeakerButton = document.querySelector("#add-speaker");
 const speakerNameInput = document.querySelector("#speaker-name");
 const speakerList = document.querySelector("#speaker-list");
@@ -23,6 +25,7 @@ let isRunning = false;
 let isProjectDirty = false;
 let hasProjectEdits = false;
 let isShowingRecognized = false;
+let isSavedRunOpen = false;
 let recognizedSegments = [];
 let recognizedTranscript = "";
 let paragraphs = [];
@@ -75,6 +78,8 @@ function setRunning(running) {
   saveProjectButton.disabled = running || !sourceSegmentsPath;
   resetRecognizedButton.disabled = running || !sourceSegmentsPath;
   toggleEditsButton.disabled = running || !hasProjectEdits;
+  revealRunButton.disabled = running || !isSavedRunOpen;
+  deleteRunButton.disabled = running || !isSavedRunOpen;
   toggleEditsButton.textContent = isShowingRecognized
     ? "Показать правки"
     : "Показать распознанное";
@@ -154,6 +159,27 @@ function setRecognizedSource(segments, transcript = "") {
 function clearRecognizedSource() {
   recognizedSegments = [];
   recognizedTranscript = "";
+}
+
+function setSavedRunActionsVisible(visible) {
+  revealRunButton.hidden = !visible;
+  deleteRunButton.hidden = !visible;
+}
+
+function resetDeletedRunState() {
+  selectedFile = null;
+  sourceSegmentsPath = null;
+  isSavedRunOpen = false;
+  clearRecognizedSource();
+  resetEditorState();
+  isProjectDirty = false;
+  hasProjectEdits = false;
+  isShowingRecognized = false;
+  openSpeakerPopoverParagraphId = null;
+  fileName.value = "Файл не выбран";
+  setSavedRunActionsVisible(false);
+  renderSpeakerList();
+  renderEditor();
 }
 
 function loadSegments(segments, transcript = "") {
@@ -578,6 +604,8 @@ selectFileButton.addEventListener("click", async () => {
 
   selectedFile = filePath;
   sourceSegmentsPath = null;
+  isSavedRunOpen = false;
+  setSavedRunActionsVisible(false);
   clearRecognizedSource();
   resetEditorState();
   isProjectDirty = false;
@@ -598,6 +626,8 @@ transcribeButton.addEventListener("click", async () => {
 
   setRunning(true);
   sourceSegmentsPath = null;
+  isSavedRunOpen = false;
+  setSavedRunActionsVisible(false);
   clearRecognizedSource();
   resetEditorState();
   isProjectDirty = false;
@@ -662,6 +692,8 @@ openSavedButton.addEventListener("click", async () => {
         : "В сохранённом результате нет сегментов.";
     }
     sourceSegmentsPath = result.sourcePath;
+    isSavedRunOpen = true;
+    setSavedRunActionsVisible(true);
     isProjectDirty = false;
     renderSpeakerList();
   } catch (error) {
@@ -669,6 +701,48 @@ openSavedButton.addEventListener("click", async () => {
   } finally {
     setRunning(false);
     renderEditor();
+  }
+});
+
+revealRunButton.addEventListener("click", async () => {
+  if (!sourceSegmentsPath || !isSavedRunOpen || isRunning) {
+    return;
+  }
+
+  setRunning(true);
+  status.textContent = "Открываю папку прогона…";
+  try {
+    await window.asr.revealRunInFolder(sourceSegmentsPath);
+    status.textContent = "Папка прогона открыта.";
+  } catch (error) {
+    status.textContent = `Ошибка открытия папки: ${error.message}`;
+  } finally {
+    setRunning(false);
+  }
+});
+
+deleteRunButton.addEventListener("click", async () => {
+  if (!sourceSegmentsPath || !isSavedRunOpen || isRunning) {
+    return;
+  }
+
+  status.textContent = "Ожидаю подтверждение удаления прогона…";
+  try {
+    const confirmed = await window.asr.confirmDeleteRun(sourceSegmentsPath);
+    if (!confirmed) {
+      status.textContent = "Удаление прогона отменено.";
+      return;
+    }
+
+    setRunning(true);
+    status.textContent = "Удаляю прогон…";
+    await window.asr.deleteRun(sourceSegmentsPath);
+    resetDeletedRunState();
+    status.textContent = "Прогон удалён вместе с подготовленным аудио, результатами и сохранёнными правками.";
+  } catch (error) {
+    status.textContent = `Ошибка удаления прогона: ${error.message}`;
+  } finally {
+    setRunning(false);
   }
 });
 

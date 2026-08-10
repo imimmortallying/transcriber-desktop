@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld("asr", {
   saveTranscript: (transcript) => ipcRenderer.invoke("dialog:save-transcript", transcript),
   saveProject: (segmentsPath, project) => ipcRenderer.invoke("project:save", segmentsPath, project),
   reloadSegments: (segmentsPath) => ipcRenderer.invoke("segments:reload", segmentsPath),
+  revealRunInFolder: (segmentsPath) => ipcRenderer.invoke("run:reveal-in-folder", segmentsPath),
+  confirmDeleteRun: (segmentsPath) => ipcRenderer.invoke("run:confirm-delete", segmentsPath),
+  deleteRun: (segmentsPath) => ipcRenderer.invoke("run:delete", segmentsPath),
   onProgress: (callback) => {
     const listener = (_event, status) => callback(status);
     ipcRenderer.on("recognition:progress", listener);

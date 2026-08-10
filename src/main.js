@@ -1,7 +1,9 @@
-const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu } = require("electron");
-const { readFile, stat, writeFile } = require("node:fs/promises");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require("electron");
+const { readFile, rm, stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
+
+const pipelineConfigPath = path.resolve(__dirname, "../pipeline/config.json");
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -19,12 +21,75 @@ function createWindow() {
   window.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
 
-function getEditsPath(segmentsPath) {
+function getRunDirectory(segmentsPath) {
+  if (typeof segmentsPath !== "string") {
+    throw new Error("Не найден исходный файл segments_asr.json.");
+  }
+
   if (path.basename(segmentsPath).toLowerCase() !== "segments_asr.json") {
     throw new Error("Выберите файл segments_asr.json из сохранённого прогона.");
   }
 
-  return path.join(path.dirname(segmentsPath), "segments_asr.edits.json");
+  return path.dirname(path.resolve(segmentsPath));
+}
+
+function getEditsPath(segmentsPath) {
+  return path.join(getRunDirectory(segmentsPath), "segments_asr.edits.json");
+}
+
+async function getPipelineDataDirectory() {
+  let config;
+  try {
+    config = JSON.parse(await readFile(pipelineConfigPath, "utf8"));
+  } catch (error) {
+    throw new Error(`Не удалось прочитать настройки папки результатов: ${error.message}`);
+  }
+
+  const dataDir = typeof config.data_dir === "string" ? config.data_dir : "../data/pipeline";
+  return path.resolve(path.dirname(pipelineConfigPath), dataDir);
+}
+
+async function getExistingManagedRunDirectory(segmentsPath) {
+  const runDirectory = getRunDirectory(segmentsPath);
+  const dataDirectory = await getPipelineDataDirectory();
+  const relativePath = path.relative(dataDirectory, runDirectory);
+  if (
+    !relativePath
+    || relativePath === ".."
+    || relativePath.startsWith(`..${path.sep}`)
+    || path.dirname(relativePath) !== "."
+    || path.isAbsolute(relativePath)
+  ) {
+    throw new Error("Управление папкой доступно только для прогонов из data/pipeline.");
+  }
+
+  let sourceInfo;
+  try {
+    sourceInfo = await stat(segmentsPath);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      throw new Error("Файл segments_asr.json уже удалён.");
+    }
+    throw error;
+  }
+  if (!sourceInfo.isFile()) {
+    throw new Error("Файл segments_asr.json уже недоступен.");
+  }
+
+  let runInfo;
+  try {
+    runInfo = await stat(runDirectory);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      throw new Error("Папка прогона уже удалена.");
+    }
+    throw error;
+  }
+  if (!runInfo.isDirectory()) {
+    throw new Error("Папка прогона уже недоступна.");
+  }
+
+  return runDirectory;
 }
 
 async function readProjectEdits(segmentsPath) {
@@ -103,6 +168,45 @@ ipcMain.handle("segments:reload", async (_event, segmentsPath) => {
 
   getEditsPath(segmentsPath);
   return readSavedSegments(segmentsPath);
+});
+
+ipcMain.handle("run:reveal-in-folder", async (_event, segmentsPath) => {
+  const runDirectory = await getExistingManagedRunDirectory(segmentsPath);
+  const errorMessage = await shell.openPath(runDirectory);
+  if (errorMessage) {
+    throw new Error(`Не удалось открыть папку прогона: ${errorMessage}`);
+  }
+});
+
+ipcMain.handle("run:confirm-delete", async (_event, segmentsPath) => {
+  await getExistingManagedRunDirectory(segmentsPath);
+  const { response } = await dialog.showMessageBox({
+    type: "warning",
+    title: "Удалить прогон распознавания?",
+    message: "Папка прогона будет удалена без возможности восстановления.",
+    detail: "Будут удалены подготовленное аудио, результаты распознавания и сохранённые правки, если они есть.",
+    buttons: ["Удалить прогон", "Отмена"],
+    defaultId: 1,
+    cancelId: 1,
+    noLink: true,
+  });
+
+  return response === 0;
+});
+
+ipcMain.handle("run:delete", async (_event, segmentsPath) => {
+  const runDirectory = await getExistingManagedRunDirectory(segmentsPath);
+
+  try {
+    await rm(runDirectory, { recursive: true, force: false, maxRetries: 3, retryDelay: 100 });
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      throw new Error("Папка прогона уже удалена.");
+    }
+    throw new Error(`Не удалось удалить папку прогона: ${error.message}`);
+  }
+
+  return true;
 });
 
 ipcMain.handle("recognition:run", async (event, inputPath) => {
