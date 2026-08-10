@@ -26,6 +26,64 @@ function createWindow() {
     },
   });
 
+  let closeApproved = false;
+  let closeCheckInProgress = false;
+  let closeConfirmationVisible = false;
+  let rendererReady = false;
+
+  window.webContents.once("did-finish-load", () => {
+    rendererReady = true;
+  });
+
+  const handleCloseState = async (event, isProjectDirty) => {
+    if (event.sender !== window.webContents || !closeCheckInProgress) {
+      return;
+    }
+
+    closeCheckInProgress = false;
+    if (!isProjectDirty) {
+      closeApproved = true;
+      window.close();
+      return;
+    }
+
+    closeConfirmationVisible = true;
+    const { response } = await dialog.showMessageBox(window, {
+      type: "warning",
+      title: "Несохранённые правки",
+      message: "Несохранённые правки будут потеряны. Закрыть приложение?",
+      buttons: ["Отмена", "Закрыть"],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    closeConfirmationVisible = false;
+
+    if (response === 1) {
+      closeApproved = true;
+      window.close();
+    }
+  };
+
+  ipcMain.on("editor:close-state", handleCloseState);
+  window.once("closed", () => {
+    ipcMain.removeListener("editor:close-state", handleCloseState);
+  });
+
+  window.on("close", (event) => {
+    if (closeApproved || !rendererReady) {
+      return;
+    }
+
+    event.preventDefault();
+    if (closeCheckInProgress || closeConfirmationVisible) {
+      return;
+    }
+
+    closeCheckInProgress = true;
+    window.webContents.send("editor:request-close");
+  });
+
   window.loadFile(path.join(__dirname, "renderer", "index.html"));
 }
 

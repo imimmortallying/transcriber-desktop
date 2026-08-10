@@ -79,6 +79,10 @@ function markProjectDirty() {
   setRunning(isRunning);
 }
 
+function confirmDiscardUnsavedChanges() {
+  return !isProjectDirty || window.confirm("Несохранённые правки будут потеряны. Продолжить?");
+}
+
 function setRunning(running) {
   isRunning = running;
   const visibleDocument = getVisibleDocument();
@@ -342,6 +346,9 @@ function applyOpenedSavedRun(result) {
 
 async function openSavedRun(segmentsPath) {
   if (isRunning) {
+    return;
+  }
+  if (!confirmDiscardUnsavedChanges()) {
     return;
   }
 
@@ -820,6 +827,9 @@ selectFileButton.addEventListener("click", async () => {
   if (!filePath) {
     return;
   }
+  if (!confirmDiscardUnsavedChanges()) {
+    return;
+  }
 
   selectedFile = filePath;
   sourceSegmentsPath = null;
@@ -840,6 +850,9 @@ selectFileButton.addEventListener("click", async () => {
 
 transcribeButton.addEventListener("click", async () => {
   if (!selectedFile || isRunning) {
+    return;
+  }
+  if (!confirmDiscardUnsavedChanges()) {
     return;
   }
 
@@ -1061,7 +1074,7 @@ resetRecognizedButton.addEventListener("click", async () => {
   if (!sourceSegmentsPath || isRunning) {
     return;
   }
-  if (isProjectDirty && !window.confirm("Несохранённые правки будут отброшены. Продолжить?")) {
+  if (!confirmDiscardUnsavedChanges()) {
     return;
   }
 
@@ -1107,6 +1120,10 @@ showEditsButton.addEventListener("click", () => {
   setRunning(isRunning);
   renderEditor();
   status.textContent = "Показаны правки редактора.";
+});
+
+window.asr.onCloseRequested(() => {
+  window.asr.reportProjectDirty(isProjectDirty);
 });
 
 window.asr.onProgress((message) => {
