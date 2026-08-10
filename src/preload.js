@@ -2,7 +2,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("asr", {
   selectMedia: () => ipcRenderer.invoke("dialog:select-media"),
-  openSavedSegments: () => ipcRenderer.invoke("dialog:open-saved-segments"),
+  listRuns: () => ipcRenderer.invoke("runs:list"),
+  openRun: (segmentsPath) => ipcRenderer.invoke("runs:open", segmentsPath),
   transcribe: (inputPath) => ipcRenderer.invoke("recognition:run", inputPath),
   copyText: (text) => ipcRenderer.invoke("clipboard:write-text", text),
   saveTranscript: (transcript) => ipcRenderer.invoke("dialog:save-transcript", transcript),

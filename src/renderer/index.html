@@ -15,22 +15,37 @@
         <button id="select-file" type="button">Выбрать файл</button>
         <output id="file-name">Файл не выбран</output>
         <button id="transcribe" type="button" disabled>Распознать</button>
-        <button id="open-saved" type="button">Открыть сохранённый результат</button>
+        <button id="open-saved" type="button" aria-expanded="false" aria-controls="saved-runs">Открыть сохранённый результат</button>
+      </section>
+
+      <section id="saved-runs" class="saved-runs" aria-labelledby="saved-runs-title" hidden>
+        <div class="saved-runs-heading">
+          <h2 id="saved-runs-title">Сохранённые прогоны</h2>
+          <button id="close-saved-runs" class="icon-button" type="button" aria-label="Закрыть список прогонов" title="Закрыть">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <p id="saved-runs-empty" class="saved-runs-empty" hidden>Сохранённых прогонов нет.</p>
+        <ul id="saved-runs-list" class="saved-runs-list" aria-label="Сохранённые прогоны"></ul>
       </section>
 
       <p id="status" role="status" aria-live="polite">Готово к выбору файла.</p>
 
       <section aria-labelledby="result-title">
         <div class="result-heading">
-          <h2 id="result-title">Текст</h2>
+          <div class="result-title-actions">
+            <h2 id="result-title">Текст</h2>
+            <button id="copy-text" class="icon-button" type="button" aria-label="Копировать чистый текст" title="Копировать чистый текст" disabled>
+              <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 8h10v12H9zM5 4h10v4M5 4v12h4" /></svg>
+            </button>
+          </div>
           <div class="result-actions">
-            <button id="copy" type="button" disabled>Копировать чистый текст</button>
             <button id="save" type="button" disabled>Сохранить .txt</button>
             <button id="save-project" type="button" disabled>Сохранить проект</button>
             <button id="reset-recognized" type="button" disabled>Сбросить к распознанному</button>
             <button id="toggle-edits" type="button" disabled>Показать распознанное</button>
             <button id="reveal-run" type="button" hidden>Открыть в папке</button>
-            <button id="delete-run" type="button" hidden>Удалить прогон</button>
+            <button id="delete-run" class="danger-button" type="button" hidden>Удалить прогон</button>
           </div>
         </div>
         <div id="editor-toolbar" class="editor-toolbar" aria-label="Действия с документом">

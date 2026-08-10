@@ -1,7 +1,11 @@
 const selectFileButton = document.querySelector("#select-file");
 const transcribeButton = document.querySelector("#transcribe");
 const openSavedButton = document.querySelector("#open-saved");
-const copyButton = document.querySelector("#copy");
+const closeSavedRunsButton = document.querySelector("#close-saved-runs");
+const savedRunsPanel = document.querySelector("#saved-runs");
+const savedRunsList = document.querySelector("#saved-runs-list");
+const savedRunsEmpty = document.querySelector("#saved-runs-empty");
+const copyTextButton = document.querySelector("#copy-text");
 const saveButton = document.querySelector("#save");
 const saveProjectButton = document.querySelector("#save-project");
 const resetRecognizedButton = document.querySelector("#reset-recognized");
@@ -18,6 +22,10 @@ const editor = document.querySelector("#editor");
 const documentMode = document.querySelector("#document-mode");
 
 const PROJECT_SCHEMA_VERSION = 1;
+const ICON_PATHS = {
+  folder: ["M3 6h5l2 2h11v10H3z"],
+  trash: ["M4 7h16", "M10 11v6", "M14 11v6", "M6 7l1 14h10l1-14", "M9 7V4h6v3"],
+};
 
 let selectedFile = null;
 let sourceSegmentsPath = null;
@@ -73,7 +81,7 @@ function setRunning(running) {
   transcribeButton.disabled = running || !selectedFile;
   openSavedButton.disabled = running;
   const hasCleanText = Boolean(getCleanText(visibleDocument.paragraphs, visibleDocument.speakers));
-  copyButton.disabled = running || !hasCleanText;
+  copyTextButton.disabled = running || !hasCleanText;
   saveButton.disabled = running || !hasCleanText;
   saveProjectButton.disabled = running || !sourceSegmentsPath;
   resetRecognizedButton.disabled = running || !sourceSegmentsPath;
@@ -90,6 +98,10 @@ function setRunning(running) {
       : "Просмотр: правки";
   addSpeakerButton.disabled = running || readOnly;
   speakerNameInput.disabled = running || readOnly;
+  savedRunsPanel.querySelectorAll("button").forEach((button) => {
+    button.disabled = running;
+  });
+  updateActiveSavedRun();
 }
 
 function formatTimecode(seconds) {
@@ -180,6 +192,187 @@ function resetDeletedRunState() {
   setSavedRunActionsVisible(false);
   renderSpeakerList();
   renderEditor();
+}
+
+function setSavedRunsVisible(visible) {
+  savedRunsPanel.hidden = !visible;
+  openSavedButton.setAttribute("aria-expanded", String(visible));
+}
+
+function formatRunDate(date) {
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return date;
+  }
+
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsedDate);
+}
+
+function createIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.classList.add("icon");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  for (const pathData of ICON_PATHS[name]) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathData);
+    svg.append(path);
+  }
+  return svg;
+}
+
+function updateActiveSavedRun() {
+  savedRunsList.querySelectorAll(".saved-run").forEach((item) => {
+    const active = item.dataset.segmentsPath === sourceSegmentsPath;
+    item.classList.toggle("is-active", active);
+    item.querySelector(".saved-run-open").setAttribute("aria-current", active ? "true" : "false");
+  });
+}
+
+function renderSavedRuns(runs) {
+  savedRunsList.textContent = "";
+  savedRunsEmpty.hidden = runs.length > 0;
+
+  for (const run of runs) {
+    const item = document.createElement("li");
+    item.className = "saved-run";
+    item.dataset.segmentsPath = run.segmentsPath;
+
+    const openRunButton = document.createElement("button");
+    openRunButton.className = "saved-run-open";
+    openRunButton.type = "button";
+    openRunButton.setAttribute("aria-label", `Открыть прогон ${run.sourceName}`);
+
+    const name = document.createElement("span");
+    name.className = "saved-run-name";
+    name.textContent = run.sourceName;
+    const date = document.createElement("span");
+    date.className = "saved-run-date";
+    date.textContent = formatRunDate(run.date);
+    openRunButton.append(name, date);
+    openRunButton.addEventListener("click", () => openSavedRun(run.segmentsPath));
+
+    const actions = document.createElement("div");
+    actions.className = "saved-run-actions";
+    const revealButton = document.createElement("button");
+    revealButton.className = "icon-button";
+    revealButton.type = "button";
+    revealButton.setAttribute("aria-label", `Открыть папку прогона ${run.sourceName}`);
+    revealButton.title = "Открыть в папке";
+    revealButton.append(createIcon("folder"));
+    revealButton.addEventListener("click", () => revealSavedRun(run.segmentsPath));
+    const deleteButton = document.createElement("button");
+    deleteButton.className = "icon-button danger-button";
+    deleteButton.type = "button";
+    deleteButton.setAttribute("aria-label", `Удалить прогон ${run.sourceName}`);
+    deleteButton.title = "Удалить";
+    deleteButton.append(createIcon("trash"));
+    deleteButton.addEventListener("click", () => deleteSavedRun(run.segmentsPath));
+    actions.append(revealButton, deleteButton);
+    item.append(openRunButton, actions);
+    savedRunsList.append(item);
+  }
+
+  setRunning(isRunning);
+}
+
+async function refreshSavedRuns() {
+  const runs = await window.asr.listRuns();
+  renderSavedRuns(runs);
+}
+
+function applyOpenedSavedRun(result) {
+  selectedFile = null;
+  sourceSegmentsPath = null;
+  clearRecognizedSource();
+  isProjectDirty = false;
+  hasProjectEdits = false;
+  isShowingRecognized = false;
+  openSpeakerPopoverParagraphId = null;
+  resetEditorState();
+  fileName.value = result.sourcePath;
+  setRecognizedSource(result.segments);
+  if (result.project) {
+    const { migratedRemark } = restoreProject(result.project);
+    hasProjectEdits = true;
+    status.textContent = migratedRemark
+      ? "Открыт сохранённый проект. Ремарки из старого файла преобразованы в обычный текст."
+      : "Открыт сохранённый проект редактора.";
+  } else {
+    loadSegments(result.segments);
+    status.textContent = result.segments.length
+      ? `Открыто: сегментов — ${result.segments.length}.`
+      : "В сохранённом результате нет сегментов.";
+  }
+  sourceSegmentsPath = result.sourcePath;
+  isSavedRunOpen = true;
+  setSavedRunActionsVisible(true);
+  isProjectDirty = false;
+  renderSpeakerList();
+}
+
+async function openSavedRun(segmentsPath) {
+  if (isRunning) {
+    return;
+  }
+
+  setRunning(true);
+  status.textContent = "Открываю сохранённый результат…";
+  try {
+    const result = await window.asr.openRun(segmentsPath);
+    applyOpenedSavedRun(result);
+    setSavedRunsVisible(false);
+  } catch (error) {
+    status.textContent = `Ошибка открытия: ${error.message}`;
+  } finally {
+    setRunning(false);
+    renderEditor();
+  }
+}
+
+async function revealSavedRun(segmentsPath) {
+  if (isRunning) {
+    return;
+  }
+
+  setRunning(true);
+  status.textContent = "Открываю папку прогона…";
+  try {
+    await window.asr.revealRunInFolder(segmentsPath);
+    status.textContent = "Папка прогона открыта.";
+  } catch (error) {
+    status.textContent = `Ошибка открытия папки: ${error.message}`;
+  } finally {
+    setRunning(false);
+  }
+}
+
+async function deleteSavedRun(segmentsPath) {
+  if (isRunning) {
+    return;
+  }
+
+  status.textContent = "Ожидаю подтверждение удаления прогона…";
+  try {
+    const confirmed = await window.asr.confirmDeleteRun(segmentsPath);
+    if (!confirmed) {
+      status.textContent = "Удаление прогона отменено.";
+      return;
+    }
+
+    setRunning(true);
+    status.textContent = "Удаляю прогон…";
+    await window.asr.deleteRun(segmentsPath);
+    await refreshSavedRuns();
+    status.textContent = "Прогон удалён вместе с подготовленным аудио, результатами и сохранёнными правками.";
+  } catch (error) {
+    status.textContent = `Ошибка удаления прогона: ${error.message}`;
+  } finally {
+    setRunning(false);
+  }
 }
 
 function loadSegments(segments, transcript = "") {
@@ -660,49 +853,26 @@ openSavedButton.addEventListener("click", async () => {
     return;
   }
 
-  setRunning(true);
-  status.textContent = "Выберите файл segments_asr.json.";
-  try {
-    const result = await window.asr.openSavedSegments();
-    if (!result) {
-      status.textContent = "Открытие сохранённого результата отменено.";
-      return;
-    }
+  if (!savedRunsPanel.hidden) {
+    setSavedRunsVisible(false);
+    return;
+  }
 
-    selectedFile = null;
-    sourceSegmentsPath = null;
-    clearRecognizedSource();
-    isProjectDirty = false;
-    hasProjectEdits = false;
-    isShowingRecognized = false;
-    openSpeakerPopoverParagraphId = null;
-    resetEditorState();
-    fileName.value = result.sourcePath;
-    setRecognizedSource(result.segments);
-    if (result.project) {
-      const { migratedRemark } = restoreProject(result.project);
-      hasProjectEdits = true;
-      status.textContent = migratedRemark
-        ? "Открыт сохранённый проект. Ремарки из старого файла преобразованы в обычный текст."
-        : "Открыт сохранённый проект редактора.";
-    } else {
-      loadSegments(result.segments);
-      status.textContent = result.segments.length
-        ? `Открыто: сегментов — ${result.segments.length}.`
-        : "В сохранённом результате нет сегментов.";
-    }
-    sourceSegmentsPath = result.sourcePath;
-    isSavedRunOpen = true;
-    setSavedRunActionsVisible(true);
-    isProjectDirty = false;
-    renderSpeakerList();
+  setSavedRunsVisible(true);
+  setRunning(true);
+  status.textContent = "Загружаю сохранённые прогоны…";
+  try {
+    await refreshSavedRuns();
+    status.textContent = "Выберите сохранённый прогон.";
   } catch (error) {
-    status.textContent = `Ошибка открытия: ${error.message}`;
+    setSavedRunsVisible(false);
+    status.textContent = `Ошибка загрузки списка: ${error.message}`;
   } finally {
     setRunning(false);
-    renderEditor();
   }
 });
+
+closeSavedRunsButton.addEventListener("click", () => setSavedRunsVisible(false));
 
 revealRunButton.addEventListener("click", async () => {
   if (!sourceSegmentsPath || !isSavedRunOpen || isRunning) {
@@ -770,7 +940,13 @@ document.addEventListener("click", (event) => {
   renderEditor();
 });
 
-copyButton.addEventListener("click", async () => {
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !savedRunsPanel.hidden) {
+    setSavedRunsVisible(false);
+  }
+});
+
+copyTextButton.addEventListener("click", async () => {
   try {
     const visibleDocument = getVisibleDocument();
     await window.asr.copyText(getCleanText(visibleDocument.paragraphs, visibleDocument.speakers));

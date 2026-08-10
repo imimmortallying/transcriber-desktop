@@ -1,5 +1,5 @@
 const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require("electron");
-const { readFile, rm, stat, writeFile } = require("node:fs/promises");
+const { readFile, readdir, rm, stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
 
@@ -92,6 +92,18 @@ async function getExistingManagedRunDirectory(segmentsPath) {
   return runDirectory;
 }
 
+function getRunListMetadata(runId, modifiedAt) {
+  const match = /^(\d{10})-(.+)-([0-9a-f]{8})$/i.exec(runId);
+  if (match) {
+    const timestamp = Number(match[1]) * 1000;
+    if (Number.isSafeInteger(timestamp) && !Number.isNaN(new Date(timestamp).getTime())) {
+      return { sourceName: match[2], date: new Date(timestamp).toISOString(), sortTime: timestamp };
+    }
+  }
+
+  return { sourceName: runId, date: new Date(modifiedAt).toISOString(), sortTime: modifiedAt };
+}
+
 async function readProjectEdits(segmentsPath) {
   const editsPath = getEditsPath(segmentsPath);
   let rawProject;
@@ -124,21 +136,43 @@ ipcMain.handle("dialog:select-media", async () => {
   return canceled ? null : filePaths[0];
 });
 
-ipcMain.handle("dialog:open-saved-segments", async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog({
-    title: "Открыть сохранённый результат",
-    properties: ["openFile"],
-    filters: [{ name: "ASR-сегменты", extensions: ["json"] }],
-  });
-  if (canceled || !filePaths[0]) {
-    return null;
+ipcMain.handle("runs:list", async () => {
+  const dataDirectory = await getPipelineDataDirectory();
+  let entries;
+  try {
+    entries = await readdir(dataDirectory, { withFileTypes: true });
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return [];
+    }
+    throw new Error(`Не удалось прочитать папку результатов: ${error.message}`);
   }
 
-  const segmentsPath = filePaths[0];
-  if (path.basename(segmentsPath).toLowerCase() !== "segments_asr.json") {
-    throw new Error("Выберите файл segments_asr.json из сохранённого прогона.");
-  }
+  const runs = await Promise.all(entries
+    .filter((entry) => entry.isDirectory())
+    .map(async (entry) => {
+      const segmentsPath = path.join(dataDirectory, entry.name, "segments_asr.json");
+      try {
+        const runDirectory = await getExistingManagedRunDirectory(segmentsPath);
+        const runInfo = await stat(runDirectory);
+        const metadata = getRunListMetadata(entry.name, runInfo.mtimeMs);
+        return { segmentsPath, sourceName: metadata.sourceName, date: metadata.date, sortTime: metadata.sortTime };
+      } catch (error) {
+        if (error.code === "ENOENT") {
+          return null;
+        }
+        return null;
+      }
+    }));
 
+  return runs
+    .filter(Boolean)
+    .sort((left, right) => right.sortTime - left.sortTime)
+    .map(({ segmentsPath, sourceName, date }) => ({ segmentsPath, sourceName, date }));
+});
+
+ipcMain.handle("runs:open", async (_event, segmentsPath) => {
+  await getExistingManagedRunDirectory(segmentsPath);
   return {
     sourcePath: segmentsPath,
     segments: await readSavedSegments(segmentsPath),

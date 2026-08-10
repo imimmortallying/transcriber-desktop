@@ -28,7 +28,10 @@ h2 {
 
 .controls,
 .result-heading,
-.result-actions {
+.result-actions,
+.result-title-actions,
+.saved-runs-heading,
+.saved-run-actions {
   display: flex;
   gap: 12px;
   align-items: center;
@@ -56,6 +59,15 @@ h2 {
   justify-content: flex-end;
 }
 
+.result-title-actions {
+  gap: 8px;
+}
+
+.result-title-actions h2,
+.saved-runs-heading h2 {
+  margin: 0;
+}
+
 button {
   padding: 10px 16px;
   border: 0;
@@ -69,6 +81,100 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.icon-button {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.danger-button {
+  border: 1px solid #c62828;
+  color: #b71c1c;
+  background: #fff;
+}
+
+.danger-button:hover:not(:disabled) {
+  color: #fff;
+  background: #c62828;
+}
+
+.saved-runs {
+  margin: 0 0 16px;
+  padding: 16px;
+  border: 1px solid #d9e0ea;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.saved-runs-heading {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.saved-runs-empty {
+  margin: 0;
+  color: #536176;
+}
+
+.saved-runs-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.saved-run {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.saved-run.is-active .saved-run-open {
+  border: 2px solid #1769d3;
+  padding: 8px 10px;
+  background: #e5f0ff;
+}
+
+.saved-run-open {
+  display: grid;
+  flex: 1;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
+  color: #172033;
+  text-align: left;
+  background: #f4f7fb;
+}
+
+.saved-run-name,
+.saved-run-date {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-run-date {
+  color: #536176;
+  font-size: 14px;
+}
+
+.saved-run-actions {
+  gap: 6px;
 }
 
 .editor {
