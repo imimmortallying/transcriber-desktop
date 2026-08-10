@@ -130,6 +130,31 @@ button:disabled {
   background: #1769d3;
 }
 
+.view-toggle {
+  display: flex;
+}
+
+.view-toggle .secondary-button {
+  border-radius: 0;
+}
+
+.view-toggle .secondary-button + .secondary-button {
+  margin-left: -1px;
+}
+
+.view-toggle .secondary-button:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.view-toggle .secondary-button:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.view-toggle .secondary-button.is-active {
+  color: #fff;
+  background: #1769d3;
+}
+
 .icon {
   width: 18px;
   height: 18px;

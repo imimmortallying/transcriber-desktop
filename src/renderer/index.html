@@ -51,7 +51,10 @@
                 <button id="save" type="button" disabled>Сохранить .txt</button>
                 <button id="save-project" type="button" disabled>Сохранить проект</button>
                 <button id="reset-recognized" class="secondary-button" type="button" disabled>Сбросить к распознанному</button>
-                <button id="toggle-edits" class="secondary-button" type="button" disabled>Показать распознанное</button>
+                <div class="view-toggle" role="group" aria-label="Режим просмотра текста">
+                  <button id="show-recognized" class="secondary-button" type="button" aria-pressed="false" disabled>Распознанное</button>
+                  <button id="show-edits" class="secondary-button is-active" type="button" aria-pressed="true" disabled>Правки</button>
+                </div>
               </div>
             </div>
             <div id="run-actions-group" class="action-group" hidden>

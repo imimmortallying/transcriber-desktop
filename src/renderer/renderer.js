@@ -9,7 +9,8 @@ const copyTextButton = document.querySelector("#copy-text");
 const saveButton = document.querySelector("#save");
 const saveProjectButton = document.querySelector("#save-project");
 const resetRecognizedButton = document.querySelector("#reset-recognized");
-const toggleEditsButton = document.querySelector("#toggle-edits");
+const showRecognizedButton = document.querySelector("#show-recognized");
+const showEditsButton = document.querySelector("#show-edits");
 const revealRunButton = document.querySelector("#reveal-run");
 const deleteRunButton = document.querySelector("#delete-run");
 const runActionsGroup = document.querySelector("#run-actions-group");
@@ -86,12 +87,14 @@ function setRunning(running) {
   saveButton.disabled = running || !hasCleanText;
   saveProjectButton.disabled = running || !sourceSegmentsPath;
   resetRecognizedButton.disabled = running || !sourceSegmentsPath;
-  toggleEditsButton.disabled = running || !hasProjectEdits;
+  showRecognizedButton.disabled = running || !hasProjectEdits;
+  showEditsButton.disabled = running || !hasProjectEdits;
   revealRunButton.disabled = running || !isSavedRunOpen;
   deleteRunButton.disabled = running || !isSavedRunOpen;
-  toggleEditsButton.textContent = isShowingRecognized
-    ? "Показать правки"
-    : "Показать распознанное";
+  showRecognizedButton.classList.toggle("is-active", isShowingRecognized);
+  showRecognizedButton.setAttribute("aria-pressed", String(isShowingRecognized));
+  showEditsButton.classList.toggle("is-active", !isShowingRecognized);
+  showEditsButton.setAttribute("aria-pressed", String(!isShowingRecognized));
   documentMode.textContent = !sourceSegmentsPath
     ? "Просмотр: нет документа"
     : isShowingRecognized || !hasProjectEdits
@@ -1017,16 +1020,26 @@ resetRecognizedButton.addEventListener("click", async () => {
   }
 });
 
-toggleEditsButton.addEventListener("click", () => {
-  if (!hasProjectEdits || isRunning) {
+showRecognizedButton.addEventListener("click", () => {
+  if (!hasProjectEdits || isRunning || isShowingRecognized) {
     return;
   }
 
-  isShowingRecognized = !isShowingRecognized;
+  isShowingRecognized = true;
+  setRunning(isRunning);
   renderEditor();
-  status.textContent = isShowingRecognized
-    ? "Показан распознанный текст. Правки сохранены в памяти."
-    : "Показаны правки редактора.";
+  status.textContent = "Показан распознанный текст. Правки сохранены в памяти.";
+});
+
+showEditsButton.addEventListener("click", () => {
+  if (!hasProjectEdits || isRunning || !isShowingRecognized) {
+    return;
+  }
+
+  isShowingRecognized = false;
+  setRunning(isRunning);
+  renderEditor();
+  status.textContent = "Показаны правки редактора.";
 });
 
 window.asr.onProgress((message) => {
