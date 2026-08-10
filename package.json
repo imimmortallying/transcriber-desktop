@@ -26,6 +26,10 @@
         }
       ]
     },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
     "extraResources": [
       {
         "from": "resources/python",
