@@ -11,10 +11,21 @@ const pythonExecutable = process.env.ASR_PYTHON
     ? path.join(process.resourcesPath, "python", "python.exe")
     : path.join(pipelineDirectory, ".venv", "Scripts", "python.exe"));
 const pipelineConfig = path.join(pipelineDirectory, "config.json");
+const runAsrPipelineCli = [
+  "import runpy, sys",
+  "sys.path.insert(0, sys.argv.pop(1))",
+  "sys.argv[0] = 'asr_pipeline.cli'",
+  "runpy.run_module('asr_pipeline.cli', run_name='__main__')",
+].join("; ");
 
 function runPython(args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(pythonExecutable, args, {
+    const child = spawn(pythonExecutable, [
+      "-c",
+      runAsrPipelineCli,
+      pipelineDirectory,
+      ...args,
+    ], {
       cwd: pipelineDirectory,
       windowsHide: true,
     });
@@ -83,8 +94,6 @@ async function runRecognition(inputPath, { dataDirectory, onProgress = () => {} 
   const configArguments = ["--config", pipelineConfig, "--data-dir", dataDirectory];
   onProgress("Подготавливаю аудио…");
   const preprocessOutput = await runPython([
-    "-m",
-    "asr_pipeline.cli",
     ...configArguments,
     "preprocess",
     inputPath,
@@ -93,8 +102,6 @@ async function runRecognition(inputPath, { dataDirectory, onProgress = () => {} 
 
   onProgress("Распознаю речь…");
   const asrOutput = await runPython([
-    "-m",
-    "asr_pipeline.cli",
     ...configArguments,
     "asr",
     runId,
