@@ -4,7 +4,10 @@ const { readFile, readdir, rm, stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
 
-const pipelineConfigPath = path.resolve(__dirname, "../pipeline/config.json");
+const pipelineDirectory = app.isPackaged
+  ? path.join(process.resourcesPath, "pipeline")
+  : path.resolve(__dirname, "../pipeline");
+const pipelineConfigPath = path.join(pipelineDirectory, "config.json");
 
 function getResultsSettingsPath() {
   return path.join(app.getPath("userData"), "settings.json");
@@ -43,6 +46,10 @@ function getEditsPath(segmentsPath) {
 }
 
 async function getPipelineDataDirectory() {
+  if (app.isPackaged) {
+    return path.join(app.getPath("userData"), "pipeline");
+  }
+
   let config;
   try {
     config = JSON.parse(await readFile(pipelineConfigPath, "utf8"));

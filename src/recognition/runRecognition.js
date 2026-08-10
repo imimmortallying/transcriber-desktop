@@ -1,10 +1,15 @@
+const { app } = require("electron");
 const { spawn } = require("node:child_process");
 const { readFile } = require("node:fs/promises");
 const path = require("node:path");
 
-const pipelineDirectory = path.resolve(__dirname, "../../pipeline");
+const pipelineDirectory = app.isPackaged
+  ? path.join(process.resourcesPath, "pipeline")
+  : path.resolve(__dirname, "../../pipeline");
 const pythonExecutable = process.env.ASR_PYTHON
-  || path.join(pipelineDirectory, ".venv", "Scripts", "python.exe");
+  || (app.isPackaged
+    ? path.join(process.resourcesPath, "python", "python.exe")
+    : path.join(pipelineDirectory, ".venv", "Scripts", "python.exe"));
 const pipelineConfig = path.join(pipelineDirectory, "config.json");
 
 function runPython(args) {

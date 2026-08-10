@@ -1,0 +1,22 @@
+{
+  "ffmpeg": {
+    "exe": "../bin/ffmpeg/ffmpeg.exe",
+    "sample_rate": 16000,
+    "loudnorm": "I=-16:TP=-1.5:LRA=11",
+    "denoise": false
+  },
+  "vad": {
+    "threshold": 0.5,
+    "min_speech_duration_ms": 250,
+    "min_silence_duration_ms": 300,
+    "speech_pad_ms": 30,
+    "max_speech_duration_s": 20.0
+  },
+  "asr": {
+    "model_name": "v3_e2e_rnnt",
+    "model_dir": "../models/gigaam",
+    "language": "ru",
+    "confidence_threshold": 0.5,
+    "max_symbols_per_step": 10
+  }
+}

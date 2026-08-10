@@ -84,12 +84,14 @@ Python-окружение создаётся внутри `pipeline/.venv`:
 ```powershell
 cd pipeline
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 Copy-Item config.example.json config.json
 ```
 
-В `pipeline/config.json` настройте путь к локальному `ffmpeg.exe`. Затем
-установите Node-зависимости и запустите Electron:
+В `pipeline/config.json` настройте путь к локальному `ffmpeg.exe`. Для
+упакованного приложения используется отдельный чистый
+`pipeline/config.app.example.json`; его не нужно редактировать конечному
+пользователю. Затем установите Node-зависимости и запустите Electron:
 
 ```powershell
 npm install

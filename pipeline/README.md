@@ -14,15 +14,19 @@
 ```bash
 cd pipeline
 python -m venv .venv
-./.venv/Scripts/pip install -r requirements.txt   # Windows
-# source .venv/bin/activate && pip install -r requirements.txt   # Linux/macOS
+./.venv/Scripts/pip install -r requirements-dev.txt   # Windows
+# source .venv/bin/activate && pip install -r requirements-dev.txt   # Linux/macOS
 cp config.example.json config.json
 ```
 
+`requirements-app.txt` содержит только runtime ASR и используется для
+упаковки; `requirements-dev.txt` добавляет диаризацию и тесты. В dev-режиме
 GigaAM качает веса `v3_e2e_rnnt` сам при первом вызове `gigaam.load_model()`
-(с проверкой хэша, официальный источник — `salute-developers/GigaAM`). ffmpeg
-уже вендорен в репозитории (`../resources/bin/ffmpeg/ffmpeg.exe`), путь к нему
-уже прописан в `config.example.json` — трогать не нужно.
+(с проверкой хэша, официальный источник — `salute-developers/GigaAM`).
+`config.app.example.json` предназначен для упаковки: он указывает на
+вендоренные ffmpeg и веса, не содержит диаризации или секретов.
+Сами бинарный ffmpeg, embeddable Python и веса размещаются локально в
+`../resources/` на этапе сборки и не хранятся в Git.
 
 ## Запуск
 

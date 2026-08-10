@@ -26,6 +26,7 @@ class VadConfig:
 @dataclass(frozen=True)
 class AsrConfig:
     model_name: str
+    model_dir: Path | None
     language: str
     confidence_threshold: float
     max_symbols_per_step: int
@@ -93,6 +94,11 @@ def load_config(config_path: Path) -> PipelineConfig:
         ),
         asr=AsrConfig(
             model_name=asr_raw["model_name"],
+            model_dir=(
+                _resolve(base_dir, asr_raw["model_dir"])
+                if asr_raw.get("model_dir")
+                else None
+            ),
             language=asr_raw.get("language", "ru"),
             confidence_threshold=float(asr_raw["confidence_threshold"]),
             max_symbols_per_step=int(asr_raw.get("max_symbols_per_step", 10)),
