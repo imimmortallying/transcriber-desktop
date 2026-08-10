@@ -41,8 +41,31 @@ h2 {
   margin: 28px 0 16px;
 }
 
+.action-group {
+  display: grid;
+  gap: 6px;
+}
+
+.action-group-title {
+  margin: 0;
+  color: #536176;
+  font-size: 12px;
+}
+
+.action-group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.controls .action-group {
+  width: 100%;
+}
+
 #file-name {
   flex: 1;
+  min-width: 160px;
   overflow: hidden;
   color: #536176;
   text-overflow: ellipsis;
@@ -50,17 +73,22 @@ h2 {
 }
 
 .result-heading {
+  flex-wrap: wrap;
   justify-content: space-between;
+  align-items: start;
   margin-top: 28px;
 }
 
 .result-actions {
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  display: grid;
+  gap: 12px;
+  align-items: start;
+  justify-items: start;
 }
 
 .result-title-actions {
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .result-title-actions h2,
@@ -89,6 +117,17 @@ button:disabled {
   height: 34px;
   padding: 0;
   place-items: center;
+}
+
+.secondary-button {
+  border: 1px solid #1769d3;
+  color: #1769d3;
+  background: #fff;
+}
+
+.secondary-button:hover:not(:disabled) {
+  color: #fff;
+  background: #1769d3;
 }
 
 .icon {

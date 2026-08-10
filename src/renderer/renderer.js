@@ -12,6 +12,7 @@ const resetRecognizedButton = document.querySelector("#reset-recognized");
 const toggleEditsButton = document.querySelector("#toggle-edits");
 const revealRunButton = document.querySelector("#reveal-run");
 const deleteRunButton = document.querySelector("#delete-run");
+const runActionsGroup = document.querySelector("#run-actions-group");
 const addSpeakerButton = document.querySelector("#add-speaker");
 const speakerNameInput = document.querySelector("#speaker-name");
 const speakerList = document.querySelector("#speaker-list");
@@ -174,8 +175,7 @@ function clearRecognizedSource() {
 }
 
 function setSavedRunActionsVisible(visible) {
-  revealRunButton.hidden = !visible;
-  deleteRunButton.hidden = !visible;
+  runActionsGroup.hidden = !visible;
 }
 
 function resetDeletedRunState() {

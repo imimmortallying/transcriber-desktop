@@ -12,10 +12,15 @@
       <p class="hint">Выберите аудио- или видеофайл. Распознавание выполняется на этом компьютере.</p>
 
       <section class="controls" aria-label="Выбор файла">
-        <button id="select-file" type="button">Выбрать файл</button>
-        <output id="file-name">Файл не выбран</output>
-        <button id="transcribe" type="button" disabled>Распознать</button>
-        <button id="open-saved" type="button" aria-expanded="false" aria-controls="saved-runs">Открыть сохранённый результат</button>
+        <div class="action-group">
+          <p class="action-group-title">Источник</p>
+          <div class="action-group-actions">
+            <button id="select-file" type="button">Выбрать файл</button>
+            <output id="file-name">Файл не выбран</output>
+            <button id="transcribe" type="button" disabled>Распознать</button>
+            <button id="open-saved" type="button" aria-expanded="false" aria-controls="saved-runs">Открыть сохранённый результат</button>
+          </div>
+        </div>
       </section>
 
       <section id="saved-runs" class="saved-runs" aria-labelledby="saved-runs-title" hidden>
@@ -40,12 +45,22 @@
             </button>
           </div>
           <div class="result-actions">
-            <button id="save" type="button" disabled>Сохранить .txt</button>
-            <button id="save-project" type="button" disabled>Сохранить проект</button>
-            <button id="reset-recognized" type="button" disabled>Сбросить к распознанному</button>
-            <button id="toggle-edits" type="button" disabled>Показать распознанное</button>
-            <button id="reveal-run" type="button" hidden>Открыть в папке</button>
-            <button id="delete-run" class="danger-button" type="button" hidden>Удалить прогон</button>
+            <div class="action-group">
+              <p class="action-group-title">Проект</p>
+              <div class="action-group-actions">
+                <button id="save" type="button" disabled>Сохранить .txt</button>
+                <button id="save-project" type="button" disabled>Сохранить проект</button>
+                <button id="reset-recognized" class="secondary-button" type="button" disabled>Сбросить к распознанному</button>
+                <button id="toggle-edits" class="secondary-button" type="button" disabled>Показать распознанное</button>
+              </div>
+            </div>
+            <div id="run-actions-group" class="action-group" hidden>
+              <p class="action-group-title">Прогон на диске</p>
+              <div class="action-group-actions">
+                <button id="reveal-run" class="secondary-button" type="button">Открыть в папке</button>
+                <button id="delete-run" class="danger-button" type="button">Удалить прогон</button>
+              </div>
+            </div>
           </div>
         </div>
         <div id="editor-toolbar" class="editor-toolbar" aria-label="Действия с документом">
