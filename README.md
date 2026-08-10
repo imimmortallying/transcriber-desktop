@@ -80,9 +80,10 @@ GigaAM. Оно помогает превратить машинную транс
   `preprocess` и `asr`, нормализует `{ text, start, end, confidence }` и читает
   сохранённый `segments_asr.json`.
 - `pipeline/` — готовый Python-движок; приложение не меняет его внутренности.
-- `docs/editor/module.md`, `docs/recognition/module.md` и
-  `docs/diarization/module.md` — сжатый контекст решений редактора, запуска
-  Python-пайплайна и отключённой диаризации.
+- `docs/editor/module.md`, `docs/recognition/module.md`,
+  `docs/diarization/module.md` и `docs/packaging/module.md` — сжатый контекст
+  решений редактора, запуска Python-пайплайна, отключённой диаризации и сборки
+  Windows-установщика.
 
 ## Первый запуск
 
