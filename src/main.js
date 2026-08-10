@@ -1,9 +1,14 @@
 const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require("electron");
+const { randomUUID } = require("node:crypto");
 const { readFile, readdir, rm, stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
 
 const pipelineConfigPath = path.resolve(__dirname, "../pipeline/config.json");
+
+function getResultsSettingsPath() {
+  return path.join(app.getPath("userData"), "settings.json");
+}
 
 function createWindow() {
   const window = new BrowserWindow({
@@ -49,9 +54,69 @@ async function getPipelineDataDirectory() {
   return path.resolve(path.dirname(pipelineConfigPath), dataDir);
 }
 
+async function getUserDataDirectory() {
+  let rawSettings;
+  try {
+    rawSettings = await readFile(getResultsSettingsPath(), "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    throw new Error(`Не удалось прочитать пользовательские настройки: ${error.message}`);
+  }
+
+  let settings;
+  try {
+    settings = JSON.parse(rawSettings);
+  } catch {
+    throw new Error("Пользовательские настройки содержат некорректный JSON.");
+  }
+
+  return typeof settings.data_dir === "string" && settings.data_dir.trim()
+    ? path.resolve(settings.data_dir)
+    : null;
+}
+
+async function getResultsDataDirectory() {
+  return await getUserDataDirectory() || getPipelineDataDirectory();
+}
+
+async function saveUserDataDirectory(dataDirectory) {
+  await writeFile(
+    getResultsSettingsPath(),
+    `${JSON.stringify({ data_dir: dataDirectory }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+async function validateWritableDataDirectory(dataDirectory) {
+  let directoryInfo;
+  try {
+    directoryInfo = await stat(dataDirectory);
+  } catch (error) {
+    throw new Error(`Папка результатов недоступна: ${error.message}`);
+  }
+  if (!directoryInfo.isDirectory()) {
+    throw new Error("Выбранный путь не является папкой.");
+  }
+
+  const markerPath = path.join(dataDirectory, `.local-asr-write-test-${randomUUID()}`);
+  try {
+    await writeFile(markerPath, "", { flag: "wx" });
+  } catch (error) {
+    throw new Error(`Нет прав на запись в выбранную папку: ${error.message}`);
+  }
+
+  try {
+    await rm(markerPath);
+  } catch (error) {
+    throw new Error(`Не удалось завершить проверку доступа к папке: ${error.message}`);
+  }
+}
+
 async function getExistingManagedRunDirectory(segmentsPath) {
   const runDirectory = getRunDirectory(segmentsPath);
-  const dataDirectory = await getPipelineDataDirectory();
+  const dataDirectory = await getResultsDataDirectory();
   const relativePath = path.relative(dataDirectory, runDirectory);
   if (
     !relativePath
@@ -60,7 +125,7 @@ async function getExistingManagedRunDirectory(segmentsPath) {
     || path.dirname(relativePath) !== "."
     || path.isAbsolute(relativePath)
   ) {
-    throw new Error("Управление папкой доступно только для прогонов из data/pipeline.");
+    throw new Error("Управление папкой доступно только для прогонов из выбранной папки результатов.");
   }
 
   let sourceInfo;
@@ -136,8 +201,40 @@ ipcMain.handle("dialog:select-media", async () => {
   return canceled ? null : filePaths[0];
 });
 
+ipcMain.handle("results:get-directory", () => getResultsDataDirectory());
+
+ipcMain.handle("results:select-directory", async () => {
+  let defaultPath;
+  try {
+    defaultPath = await getResultsDataDirectory();
+  } catch {
+    defaultPath = undefined;
+  }
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: "Выберите папку для результатов распознавания",
+    defaultPath,
+    properties: ["openDirectory"],
+  });
+  if (canceled || !filePaths[0]) {
+    return null;
+  }
+
+  const dataDirectory = path.resolve(filePaths[0]);
+  await validateWritableDataDirectory(dataDirectory);
+  await saveUserDataDirectory(dataDirectory);
+  return dataDirectory;
+});
+
+ipcMain.handle("results:reveal-directory", async () => {
+  const dataDirectory = await getResultsDataDirectory();
+  const errorMessage = await shell.openPath(dataDirectory);
+  if (errorMessage) {
+    throw new Error(`Не удалось открыть папку результатов: ${errorMessage}`);
+  }
+});
+
 ipcMain.handle("runs:list", async () => {
-  const dataDirectory = await getPipelineDataDirectory();
+  const dataDirectory = await getResultsDataDirectory();
   let entries;
   try {
     entries = await readdir(dataDirectory, { withFileTypes: true });
@@ -253,7 +350,9 @@ ipcMain.handle("recognition:run", async (event, inputPath) => {
     throw new Error("Выбранный путь не является файлом.");
   }
 
+  const dataDirectory = await getResultsDataDirectory();
   return runRecognition(inputPath, {
+    dataDirectory,
     onProgress(status) {
       event.sender.send("recognition:progress", status);
     },

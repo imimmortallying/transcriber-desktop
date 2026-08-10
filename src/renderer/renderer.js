@@ -19,6 +19,9 @@ const speakerNameInput = document.querySelector("#speaker-name");
 const speakerList = document.querySelector("#speaker-list");
 const editorToolbar = document.querySelector("#editor-toolbar");
 const fileName = document.querySelector("#file-name");
+const resultsDirectory = document.querySelector("#results-directory");
+const selectResultsDirectoryButton = document.querySelector("#select-results-directory");
+const revealResultsDirectoryButton = document.querySelector("#reveal-results-directory");
 const status = document.querySelector("#status");
 const editor = document.querySelector("#editor");
 const documentMode = document.querySelector("#document-mode");
@@ -36,6 +39,7 @@ let isProjectDirty = false;
 let hasProjectEdits = false;
 let isShowingRecognized = false;
 let isSavedRunOpen = false;
+let resultsDirectoryPath = null;
 let recognizedSegments = [];
 let recognizedTranscript = "";
 let paragraphs = [];
@@ -82,6 +86,8 @@ function setRunning(running) {
   selectFileButton.disabled = running;
   transcribeButton.disabled = running || !selectedFile;
   openSavedButton.disabled = running;
+  selectResultsDirectoryButton.disabled = running;
+  revealResultsDirectoryButton.disabled = running || !resultsDirectoryPath;
   const hasCleanText = Boolean(getCleanText(visibleDocument.paragraphs, visibleDocument.speakers));
   copyTextButton.disabled = running || !hasCleanText;
   saveButton.disabled = running || !hasCleanText;
@@ -179,6 +185,23 @@ function clearRecognizedSource() {
 
 function setSavedRunActionsVisible(visible) {
   runActionsGroup.hidden = !visible;
+}
+
+function setResultsDirectory(dataDirectory) {
+  resultsDirectoryPath = dataDirectory;
+  resultsDirectory.textContent = dataDirectory;
+  resultsDirectory.title = dataDirectory;
+  setRunning(isRunning);
+}
+
+async function loadResultsDirectory() {
+  try {
+    setResultsDirectory(await window.asr.getResultsDirectory());
+  } catch (error) {
+    resultsDirectory.textContent = "Папка результатов недоступна";
+    resultsDirectory.title = "Папка результатов недоступна";
+    status.textContent = `Ошибка настроек: ${error.message}`;
+  }
 }
 
 function resetDeletedRunState() {
@@ -877,6 +900,50 @@ openSavedButton.addEventListener("click", async () => {
 
 closeSavedRunsButton.addEventListener("click", () => setSavedRunsVisible(false));
 
+selectResultsDirectoryButton.addEventListener("click", async () => {
+  if (isRunning) {
+    return;
+  }
+
+  setRunning(true);
+  try {
+    const dataDirectory = await window.asr.selectResultsDirectory();
+    if (!dataDirectory) {
+      status.textContent = "Смена папки результатов отменена.";
+      return;
+    }
+
+    setResultsDirectory(dataDirectory);
+    isSavedRunOpen = false;
+    setSavedRunActionsVisible(false);
+    if (!savedRunsPanel.hidden) {
+      await refreshSavedRuns();
+    }
+    status.textContent = "Папка результатов изменена. Новые прогоны будут сохранены в ней.";
+  } catch (error) {
+    status.textContent = `Ошибка смены папки результатов: ${error.message}`;
+  } finally {
+    setRunning(false);
+  }
+});
+
+revealResultsDirectoryButton.addEventListener("click", async () => {
+  if (isRunning || !resultsDirectoryPath) {
+    return;
+  }
+
+  setRunning(true);
+  status.textContent = "Открываю папку результатов…";
+  try {
+    await window.asr.revealResultsDirectory();
+    status.textContent = "Папка результатов открыта.";
+  } catch (error) {
+    status.textContent = `Ошибка открытия папки результатов: ${error.message}`;
+  } finally {
+    setRunning(false);
+  }
+});
+
 revealRunButton.addEventListener("click", async () => {
   if (!sourceSegmentsPath || !isSavedRunOpen || isRunning) {
     return;
@@ -1045,3 +1112,5 @@ showEditsButton.addEventListener("click", () => {
 window.asr.onProgress((message) => {
   status.textContent = message;
 });
+
+loadResultsDirectory();

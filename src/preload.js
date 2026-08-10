@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("asr", {
   selectMedia: () => ipcRenderer.invoke("dialog:select-media"),
+  getResultsDirectory: () => ipcRenderer.invoke("results:get-directory"),
+  selectResultsDirectory: () => ipcRenderer.invoke("results:select-directory"),
+  revealResultsDirectory: () => ipcRenderer.invoke("results:reveal-directory"),
   listRuns: () => ipcRenderer.invoke("runs:list"),
   openRun: (segmentsPath) => ipcRenderer.invoke("runs:open", segmentsPath),
   transcribe: (inputPath) => ipcRenderer.invoke("recognition:run", inputPath),

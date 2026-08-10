@@ -8,6 +8,7 @@ a stage re-run without repeating earlier ones.
 import argparse
 import time
 import uuid
+from dataclasses import replace
 from pathlib import Path
 
 from .asr import run_asr
@@ -28,8 +29,15 @@ def _run_dir(config: PipelineConfig, run_id: str) -> Path:
     return config.data_dir / run_id
 
 
-def cmd_preprocess(args: argparse.Namespace) -> None:
+def _load_config(args: argparse.Namespace) -> PipelineConfig:
     config = load_config(args.config)
+    if args.data_dir is None:
+        return config
+    return replace(config, data_dir=args.data_dir.resolve())
+
+
+def cmd_preprocess(args: argparse.Namespace) -> None:
+    config = _load_config(args)
     run_id = args.run_id or _make_run_id(Path(args.input))
     run_dir = _run_dir(config, run_id)
     segments_path = run_preprocess(Path(args.input), run_dir, config)
@@ -38,7 +46,7 @@ def cmd_preprocess(args: argparse.Namespace) -> None:
 
 
 def cmd_asr(args: argparse.Namespace) -> None:
-    config = load_config(args.config)
+    config = _load_config(args)
     run_dir = _run_dir(config, args.run_id)
     normalized_path = run_dir / "normalized.wav"
     segments_path = run_dir / "vad_segments.json"
@@ -51,7 +59,7 @@ def cmd_asr(args: argparse.Namespace) -> None:
 
 
 def cmd_diarize(args: argparse.Namespace) -> None:
-    config = load_config(args.config)
+    config = _load_config(args)
     run_dir = _run_dir(config, args.run_id)
     normalized_path = run_dir / "normalized.wav"
     segments_path = run_dir / "segments_asr.json"
@@ -65,7 +73,7 @@ def cmd_diarize(args: argparse.Namespace) -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> None:
-    config = load_config(args.config)
+    config = _load_config(args)
     run_id = args.run_id or _make_run_id(Path(args.input))
     run_dir = _run_dir(config, run_id)
 
@@ -82,6 +90,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(prog="asr_pipeline")
     parser.add_argument("--config", type=Path, default=_default_config_path())
+    parser.add_argument("--data-dir", type=Path, default=None)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     p_preprocess = subparsers.add_parser(

@@ -70,13 +70,17 @@ async function readSavedSegments(segmentsPath) {
   return parsedSegments.map(normalizeSegment);
 }
 
-async function runRecognition(inputPath, { onProgress = () => {} } = {}) {
+async function runRecognition(inputPath, { dataDirectory, onProgress = () => {} } = {}) {
+  if (typeof dataDirectory !== "string" || !dataDirectory) {
+    throw new Error("Не задана папка для результатов распознавания.");
+  }
+
+  const configArguments = ["--config", pipelineConfig, "--data-dir", dataDirectory];
   onProgress("Подготавливаю аудио…");
   const preprocessOutput = await runPython([
     "-m",
     "asr_pipeline.cli",
-    "--config",
-    pipelineConfig,
+    ...configArguments,
     "preprocess",
     inputPath,
   ]);
@@ -86,8 +90,7 @@ async function runRecognition(inputPath, { onProgress = () => {} } = {}) {
   const asrOutput = await runPython([
     "-m",
     "asr_pipeline.cli",
-    "--config",
-    pipelineConfig,
+    ...configArguments,
     "asr",
     runId,
   ]);

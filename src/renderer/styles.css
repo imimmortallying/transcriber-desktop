@@ -63,6 +63,27 @@ h2 {
   width: 100%;
 }
 
+.results-directory {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: #536176;
+  font-size: 14px;
+}
+
+.results-directory-label {
+  white-space: nowrap;
+}
+
+#results-directory {
+  flex: 1;
+  min-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #file-name {
   flex: 1;
   min-width: 160px;
