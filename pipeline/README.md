@@ -1,48 +1,35 @@
-# Локальный ASR-пайплайн (препроцессинг → GigaAM → LLM-структурирование)
+# Локальный ASR-пайплайн (препроцессинг → GigaAM)
 
 Отдельный Python-модуль, не связанный с Node/Electron-частью репозитория
-(`src/`). Три независимо запускаемых этапа: препроцессинг аудио → распознавание
-речи (GigaAM v3, `v3_e2e_rnnt`) с маркировкой неразборчивых мест → структурирование
-в документ по шаблону через LLM. Всё выполняется локально; единственное
-исключение — обращение к LLM-бэкенду на этапе структурирования (по умолчанию —
-тоже локально, через Ollama).
-
-Архитектурный контекст и обоснование ключевых решений — в
-`C:\Users\PC_USER\.claude\plans\whimsical-scribbling-book.md` (согласованный план) и в
-`../docs-audit.md` (аудит существующей документации репозитория).
+(`src/`). Три запускаемые из CLI этапа: препроцессинг аудио, распознавание речи
+(GigaAM v3, `v3_e2e_rnnt`) с маркировкой неразборчивых мест и диаризация
+готового ASR-результата. Всё выполняется локально.
 
 ## Установка
 
 ```bash
 cd pipeline
 python -m venv .venv
-./.venv/Scripts/pip install -r requirements.txt   # Windows
-# source .venv/bin/activate && pip install -r requirements.txt   # Linux/macOS
+./.venv/Scripts/pip install -r requirements-dev.txt   # Windows
+# source .venv/bin/activate && pip install -r requirements-dev.txt   # Linux/macOS
 cp config.example.json config.json
 ```
 
-В `config.json` обязательно укажите `structuring.ollama.model` — конкретную
-модель, доступную в вашей локальной Ollama (в примере стоит `REPLACE_ME`,
-намеренно невалидное значение, чтобы не подставлять по умолчанию непроверенную
-модель).
-
+`requirements-app.txt` содержит только runtime ASR и используется для
+упаковки; `requirements-dev.txt` добавляет диаризацию и тесты. В dev-режиме
 GigaAM качает веса `v3_e2e_rnnt` сам при первом вызове `gigaam.load_model()`
-(с проверкой хэша, официальный источник — `salute-developers/GigaAM`). ffmpeg
-уже вендорен в репозитории (`../resources/bin/ffmpeg/ffmpeg.exe`), путь к нему
-уже прописан в `config.example.json` — трогать не нужно.
+(с проверкой хэша, официальный источник — `salute-developers/GigaAM`).
+`config.app.example.json` предназначен для упаковки: он указывает на
+вендоренные ffmpeg и веса, не содержит диаризации или секретов.
+Сами бинарный ffmpeg, embeddable Python и веса размещаются локально в
+`../resources/` на этапе сборки и не хранятся в Git.
 
-### LLM-бэкенд (Ollama)
-
-Нужен локально поднятый Ollama-сервер с заранее скачанной моделью:
-
-```bash
-ollama pull <модель, например qwen2.5:14b-instruct>
-ollama serve
-```
-
-Пайплайн обращается к `http://localhost:11434` (или к другому хосту, если
-переопределён в `config.json`) — сеть не используется, кроме loopback-запроса к
-уже локально работающему серверу.
+Локальный `config.json` не является артефактом поставки: в нём может быть
+токен диаризации или другая локальная конфигурация. Для дистрибутива
+electron-builder использует только `config.app.example.json`; не включайте
+`config.json` в передаваемые архивы вручную. Полный текущий дистрибутив и
+будущее направление разделения Client/Runtime описаны в
+`../docs/packaging/module.md` и `../docs/product/module.md`.
 
 ## Запуск
 
@@ -57,11 +44,11 @@ python -m asr_pipeline.cli preprocess path/to/audio.mp3
 python -m asr_pipeline.cli asr <run_id>
 # -> transcript=data/pipeline/<run_id>/transcript.txt
 
-python -m asr_pipeline.cli structure <run_id>
-# -> structured_document=data/pipeline/<run_id>/structured_document.md
+python -m asr_pipeline.cli diarize <run_id>
+# -> diarized_segments=data/pipeline/<run_id>/segments_diarized.json
 ```
 
-Либо все три этапа сразу:
+Либо препроцессинг и распознавание сразу:
 
 ```bash
 python -m asr_pipeline.cli run path/to/audio.mp3
@@ -76,10 +63,8 @@ python -m asr_pipeline.cli run path/to/audio.mp3
 Смоук-тесты гоняются на `tests/fixtures/sample_short.wav` — коротком (5с) реальном
 образце речи, переиспользованном из `../data/uploads/smoke-short.mp3`
 (тот же файл, что использовался для ручной проверки существующего воркера).
-Тест LLM-бэкенда пропускается (skip), если Ollama не поднята локально — это
-внешняя предпосылка, которую пайплайн документирует, но не автоматизирует.
 
-## Известные отклонения от изначально предполагаемого плана
+## Известные технические особенности
 
 Зафиксированы явно, чтобы не потерялись как молчаливые допущения:
 

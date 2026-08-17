@@ -148,7 +148,10 @@ def run_asr(
     raw_segments = json.loads(vad_segments_path.read_text(encoding="utf-8"))
     vad_segments = [VadSegment(**s) for s in raw_segments]
 
-    model = gigaam.load_model(config.asr.model_name)
+    model = gigaam.load_model(
+        config.asr.model_name,
+        download_root=str(config.asr.model_dir) if config.asr.model_dir else None,
+    )
     model.decoding.max_symbols = config.asr.max_symbols_per_step
 
     audio, sample_rate = sf.read(str(normalized_wav), dtype="float32")

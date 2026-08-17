@@ -1,15 +1,31 @@
+const { app } = require("electron");
 const { spawn } = require("node:child_process");
 const { readFile } = require("node:fs/promises");
 const path = require("node:path");
 
-const pipelineDirectory = path.resolve(__dirname, "../../pipeline");
+const pipelineDirectory = app.isPackaged
+  ? path.join(process.resourcesPath, "pipeline")
+  : path.resolve(__dirname, "../../pipeline");
 const pythonExecutable = process.env.ASR_PYTHON
-  || path.join(pipelineDirectory, ".venv", "Scripts", "python.exe");
+  || (app.isPackaged
+    ? path.join(process.resourcesPath, "python", "python.exe")
+    : path.join(pipelineDirectory, ".venv", "Scripts", "python.exe"));
 const pipelineConfig = path.join(pipelineDirectory, "config.json");
+const runAsrPipelineCli = [
+  "import runpy, sys",
+  "sys.path.insert(0, sys.argv.pop(1))",
+  "sys.argv[0] = 'asr_pipeline.cli'",
+  "runpy.run_module('asr_pipeline.cli', run_name='__main__')",
+].join("; ");
 
 function runPython(args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(pythonExecutable, args, {
+    const child = spawn(pythonExecutable, [
+      "-c",
+      runAsrPipelineCli,
+      pipelineDirectory,
+      ...args,
+    ], {
       cwd: pipelineDirectory,
       windowsHide: true,
     });
@@ -50,16 +66,35 @@ function normalizeSegment(segment) {
     start: Number.isFinite(segment.start) ? segment.start : null,
     end: Number.isFinite(segment.end) ? segment.end : null,
     confidence: Number.isFinite(segment.confidence) ? segment.confidence : null,
+    speaker: typeof segment.speaker === "string" ? segment.speaker : null,
   };
 }
 
-async function runRecognition(inputPath, { onProgress = () => {} } = {}) {
+async function readSavedSegments(segmentsPath) {
+  const rawSegments = await readFile(segmentsPath, "utf8");
+  let parsedSegments;
+  try {
+    parsedSegments = JSON.parse(rawSegments);
+  } catch {
+    throw new Error("Файл segments_asr.json содержит некорректный JSON.");
+  }
+
+  if (!Array.isArray(parsedSegments)) {
+    throw new Error("Файл segments_asr.json должен содержать массив сегментов.");
+  }
+
+  return parsedSegments.map(normalizeSegment);
+}
+
+async function runRecognition(inputPath, { dataDirectory, onProgress = () => {} } = {}) {
+  if (typeof dataDirectory !== "string" || !dataDirectory) {
+    throw new Error("Не задана папка для результатов распознавания.");
+  }
+
+  const configArguments = ["--config", pipelineConfig, "--data-dir", dataDirectory];
   onProgress("Подготавливаю аудио…");
   const preprocessOutput = await runPython([
-    "-m",
-    "asr_pipeline.cli",
-    "--config",
-    pipelineConfig,
+    ...configArguments,
     "preprocess",
     inputPath,
   ]);
@@ -67,24 +102,23 @@ async function runRecognition(inputPath, { onProgress = () => {} } = {}) {
 
   onProgress("Распознаю речь…");
   const asrOutput = await runPython([
-    "-m",
-    "asr_pipeline.cli",
-    "--config",
-    pipelineConfig,
+    ...configArguments,
     "asr",
     runId,
   ]);
   const transcriptPath = readCliValue(asrOutput, "transcript");
-  const [transcript, rawSegments] = await Promise.all([
+  const segmentsPath = path.join(path.dirname(transcriptPath), "segments_asr.json");
+  const [transcript, segments] = await Promise.all([
     readFile(transcriptPath, "utf8"),
-    readFile(path.join(path.dirname(transcriptPath), "segments_asr.json"), "utf8"),
+    readSavedSegments(segmentsPath),
   ]);
-  const parsedSegments = JSON.parse(rawSegments);
 
   return {
+    runId,
     transcript,
-    segments: Array.isArray(parsedSegments) ? parsedSegments.map(normalizeSegment) : [],
+    segments,
+    segmentsPath,
   };
 }
 
-module.exports = { runRecognition };
+module.exports = { readSavedSegments, runRecognition };

@@ -1,6 +1,6 @@
 {
   "ffmpeg": {
-    "exe": "../resources/bin/ffmpeg/ffmpeg.exe",
+    "exe": "../bin/ffmpeg/ffmpeg.exe",
     "sample_rate": 16000,
     "loudnorm": "I=-16:TP=-1.5:LRA=11",
     "denoise": false
@@ -14,13 +14,9 @@
   },
   "asr": {
     "model_name": "v3_e2e_rnnt",
+    "model_dir": "../models/gigaam",
     "language": "ru",
     "confidence_threshold": 0.5,
     "max_symbols_per_step": 10
-  },
-  "diarization": {
-    "model_name": "pyannote/speaker-diarization-community-1",
-    "hf_token": "REPLACE_ME"
-  },
-  "data_dir": "../data/pipeline"
+  }
 }

@@ -12,3 +12,8 @@ pipeline/data/
 data/
 *.wav
 *.mp4
+
+# Locally provisioned packaging artifacts.
+resources/python/
+resources/bin/ffmpeg/
+resources/models/gigaam/

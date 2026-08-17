@@ -26,22 +26,16 @@ class VadConfig:
 @dataclass(frozen=True)
 class AsrConfig:
     model_name: str
+    model_dir: Path | None
     language: str
     confidence_threshold: float
     max_symbols_per_step: int
 
 
 @dataclass(frozen=True)
-class OllamaConfig:
-    host: str
-    model: str
-
-
-@dataclass(frozen=True)
-class StructuringConfig:
-    backend: str
-    ollama: OllamaConfig
-    template_path: Path
+class DiarizationConfig:
+    model_name: str
+    hf_token: str | None
 
 
 @dataclass(frozen=True)
@@ -49,7 +43,7 @@ class PipelineConfig:
     ffmpeg: FfmpegConfig
     vad: VadConfig
     asr: AsrConfig
-    structuring: StructuringConfig
+    diarization: DiarizationConfig
     data_dir: Path
 
 
@@ -77,8 +71,6 @@ def load_config(config_path: Path) -> PipelineConfig:
         ffmpeg_raw = raw["ffmpeg"]
         vad_raw = raw["vad"]
         asr_raw = raw["asr"]
-        structuring_raw = raw["structuring"]
-        ollama_raw = structuring_raw["ollama"]
     except KeyError as error:
         raise ValueError(f"Missing required config section: {error}") from error
 
@@ -102,17 +94,22 @@ def load_config(config_path: Path) -> PipelineConfig:
         ),
         asr=AsrConfig(
             model_name=asr_raw["model_name"],
+            model_dir=(
+                _resolve(base_dir, asr_raw["model_dir"])
+                if asr_raw.get("model_dir")
+                else None
+            ),
             language=asr_raw.get("language", "ru"),
             confidence_threshold=float(asr_raw["confidence_threshold"]),
             max_symbols_per_step=int(asr_raw.get("max_symbols_per_step", 10)),
         ),
-        structuring=StructuringConfig(
-            backend=structuring_raw["backend"],
-            ollama=OllamaConfig(
-                host=ollama_raw["host"],
-                model=ollama_raw["model"],
+        # Optional for backward compatibility with existing local config.json
+        # files: ASR continues to work until diarization is explicitly enabled.
+        diarization=DiarizationConfig(
+            model_name=raw.get("diarization", {}).get(
+                "model_name", "pyannote/speaker-diarization-community-1"
             ),
-            template_path=_resolve(base_dir, structuring_raw["template_path"]),
+            hf_token=raw.get("diarization", {}).get("hf_token"),
         ),
         data_dir=_resolve(base_dir, raw.get("data_dir", "../data/pipeline")),
     )

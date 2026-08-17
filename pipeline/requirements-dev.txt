@@ -1,0 +1,5 @@
+# Development dependencies. This includes the optional diarization stack and tests.
+-r requirements-app.txt
+
+pyannote.audio==4.0.7
+pytest==9.1.1

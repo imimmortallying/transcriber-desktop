@@ -6,9 +6,55 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/recognition/runRecognition.js && node --check src/renderer/renderer.js"
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/recognition/runRecognition.js && node --check src/renderer/renderer.js",
+    "dist:win": "electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "ru.sber.local-asr",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "extraResources": [
+      {
+        "from": "resources/python",
+        "to": "python"
+      },
+      {
+        "from": "pipeline/asr_pipeline",
+        "to": "pipeline/asr_pipeline"
+      },
+      {
+        "from": "pipeline/config.app.example.json",
+        "to": "pipeline/config.json"
+      },
+      {
+        "from": "resources/bin/ffmpeg",
+        "to": "bin/ffmpeg"
+      },
+      {
+        "from": "resources/models/gigaam",
+        "to": "models/gigaam"
+      }
+    ]
   },
   "devDependencies": {
-    "electron": "^41.7.1"
+    "electron": "^41.7.1",
+    "electron-builder": "26.0.12"
   }
 }

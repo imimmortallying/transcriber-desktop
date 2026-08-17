@@ -2,8 +2,25 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("asr", {
   selectMedia: () => ipcRenderer.invoke("dialog:select-media"),
+  getResultsDirectory: () => ipcRenderer.invoke("results:get-directory"),
+  selectResultsDirectory: () => ipcRenderer.invoke("results:select-directory"),
+  revealResultsDirectory: () => ipcRenderer.invoke("results:reveal-directory"),
+  listRuns: () => ipcRenderer.invoke("runs:list"),
+  openRun: (segmentsPath) => ipcRenderer.invoke("runs:open", segmentsPath),
   transcribe: (inputPath) => ipcRenderer.invoke("recognition:run", inputPath),
+  copyText: (text) => ipcRenderer.invoke("clipboard:write-text", text),
   saveTranscript: (transcript) => ipcRenderer.invoke("dialog:save-transcript", transcript),
+  saveProject: (segmentsPath, project) => ipcRenderer.invoke("project:save", segmentsPath, project),
+  reloadSegments: (segmentsPath) => ipcRenderer.invoke("segments:reload", segmentsPath),
+  revealRunInFolder: (segmentsPath) => ipcRenderer.invoke("run:reveal-in-folder", segmentsPath),
+  confirmDeleteRun: (segmentsPath) => ipcRenderer.invoke("run:confirm-delete", segmentsPath),
+  deleteRun: (segmentsPath) => ipcRenderer.invoke("run:delete", segmentsPath),
+  onCloseRequested: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("editor:request-close", listener);
+    return () => ipcRenderer.removeListener("editor:request-close", listener);
+  },
+  reportProjectDirty: (isProjectDirty) => ipcRenderer.send("editor:close-state", Boolean(isProjectDirty)),
   onProgress: (callback) => {
     const listener = (_event, status) => callback(status);
     ipcRenderer.on("recognition:progress", listener);

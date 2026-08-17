@@ -12,19 +12,79 @@
       <p class="hint">Выберите аудио- или видеофайл. Распознавание выполняется на этом компьютере.</p>
 
       <section class="controls" aria-label="Выбор файла">
-        <button id="select-file" type="button">Выбрать файл</button>
-        <output id="file-name">Файл не выбран</output>
-        <button id="transcribe" type="button" disabled>Распознать</button>
+        <div class="action-group">
+          <p class="action-group-title">Источник</p>
+          <div class="action-group-actions">
+            <button id="select-file" type="button">Выбрать файл</button>
+            <output id="file-name">Файл не выбран</output>
+            <button id="transcribe" type="button" disabled>Распознать</button>
+            <button id="open-saved" type="button" aria-expanded="false" aria-controls="saved-runs">Открыть сохранённый результат</button>
+          </div>
+          <div class="results-directory">
+            <span class="results-directory-label">Папка результатов:</span>
+            <output id="results-directory" title="Загружаю путь…">Загружаю путь…</output>
+            <button id="select-results-directory" class="secondary-button" type="button">Изменить папку</button>
+            <button id="reveal-results-directory" class="secondary-button" type="button" disabled>Открыть</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="saved-runs" class="saved-runs" aria-labelledby="saved-runs-title" hidden>
+        <div class="saved-runs-heading">
+          <h2 id="saved-runs-title">Сохранённые прогоны</h2>
+          <button id="close-saved-runs" class="icon-button" type="button" aria-label="Закрыть список прогонов" title="Закрыть">
+            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </div>
+        <p id="saved-runs-empty" class="saved-runs-empty" hidden>Сохранённых прогонов нет.</p>
+        <ul id="saved-runs-list" class="saved-runs-list" aria-label="Сохранённые прогоны"></ul>
       </section>
 
       <p id="status" role="status" aria-live="polite">Готово к выбору файла.</p>
 
       <section aria-labelledby="result-title">
         <div class="result-heading">
-          <h2 id="result-title">Текст</h2>
-          <button id="save" type="button" disabled>Сохранить .txt</button>
+          <div class="result-title-actions">
+            <h2 id="result-title">Текст</h2>
+            <button id="copy-text" class="icon-button" type="button" aria-label="Копировать чистый текст" title="Копировать чистый текст" disabled>
+              <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 8h10v12H9zM5 4h10v4M5 4v12h4" /></svg>
+            </button>
+          </div>
+          <div class="result-actions">
+            <div class="action-group">
+              <p class="action-group-title">Проект</p>
+              <div class="action-group-actions">
+                <button id="save" type="button" disabled>Сохранить .txt</button>
+                <button id="save-project" type="button" disabled>Сохранить проект</button>
+                <button id="reset-recognized" class="secondary-button" type="button" disabled>Сбросить к распознанному</button>
+                <div class="view-toggle" role="group" aria-label="Режим просмотра текста">
+                  <button id="show-recognized" class="secondary-button" type="button" aria-pressed="false" disabled>Распознанное</button>
+                  <button id="show-edits" class="secondary-button is-active" type="button" aria-pressed="true" disabled>Правки</button>
+                </div>
+              </div>
+            </div>
+            <div id="run-actions-group" class="action-group" hidden>
+              <p class="action-group-title">Прогон на диске</p>
+              <div class="action-group-actions">
+                <button id="reveal-run" class="secondary-button" type="button">Открыть в папке</button>
+                <button id="delete-run" class="danger-button" type="button">Удалить прогон</button>
+              </div>
+            </div>
+          </div>
         </div>
-        <textarea id="transcript" readonly placeholder="Здесь появится расшифровка."></textarea>
+        <div id="editor-toolbar" class="editor-toolbar" aria-label="Действия с документом">
+          <label class="speaker-name-field">
+            <span>Имя нового говорящего</span>
+            <input id="speaker-name" type="text" placeholder="Например, Следователь Карамчаков" autocomplete="off" disabled />
+          </label>
+          <button id="add-speaker" type="button" disabled>Добавить говорящего</button>
+          <ul id="speaker-list" class="speaker-list" aria-label="Созданные говорящие"></ul>
+        </div>
+        <p id="document-mode">Просмотр: нет документа</p>
+        <div id="editor" class="editor" aria-live="polite">
+          <p class="editor-placeholder">Здесь появится расшифровка.</p>
+        </div>
+        <p class="editor-hint">Enter создаёт новый абзац. Назначайте или меняйте говорящего кнопкой рядом с нужным абзацем.</p>
       </section>
     </main>
     <script src="renderer.js"></script>
