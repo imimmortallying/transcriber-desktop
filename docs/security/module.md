@@ -63,6 +63,27 @@ security audit и не утверждает наличие уязвимости 
   подтверждение удаления; отдельная негативная проверка обхода границы run пока
   не определена.
 
+### Client и ASR Runtime
+
+- **Asset:** выбранный Client Runtime и возможность запускать его Python-код.
+- **Threat:** отсутствующий, повреждённый или несовместимый Runtime мог бы
+  привести к запуску неподходящего subprocess либо неясной ошибке во время
+  распознавания.
+- **Trust boundary:** Electron Client → локальный ASR Runtime.
+- **Control:** `src/runtime/resolveRuntime.js` определяет Runtime только из
+  application-controlled packaged/dev layout. Перед запуском Python Client
+  читает `runtime-manifest.json`, проверяет format, identity и API version, а
+  также наличие Python, pipeline/config, фактического CLI entrypoint и ffmpeg.
+  Имена и состав файлов модели остаются деталями реализации Runtime: Client их
+  не знает. Это не криптографическая проверка целостности и не проверка
+  внутренних Python зависимостей или здоровья модели. Пользовательская
+  настройка пути Runtime не добавлена.
+- **Implementation:** `runtime-manifest.json`; `src/runtime/resolveRuntime.js`;
+  `src/recognition/runRecognition.js` вызывает preflight перед `spawn`.
+- **Verification:** `npm run test:runtime` проверяет совместимый Runtime,
+  неверные identity/API, отсутствующий или некорректный manifest, отсутствующий
+  ключевой ресурс и разделение production/development Python resolution.
+
 ### Python, ffmpeg и другие subprocess
 
 - **Asset:** возможность исполнения локального кода и целостность обработки
@@ -73,9 +94,9 @@ security audit и не утверждает наличие уязвимости 
   библиотеки обработки медиа.
 - **Control:** Node запускает Python через `spawn` с массивом аргументов, а
   Python запускает ffmpeg через `subprocess.run` с массивом аргументов; shell
-  не используется. Путь к Python по умолчанию привязан к dev/runtime-ресурсам,
-  но `ASR_PYTHON` является явным доверенным override окружения; путь к ffmpeg
-  приходит из локальной конфигурации.
+  не используется. Production Python определяется Runtime resolver и не может
+  быть заменён `ASR_PYTHON`; этот явный доверенный override работает только в
+  development. Путь к ffmpeg приходит из packaged runtime-конфигурации.
 - **Implementation:** `src/recognition/runRecognition.js`: `runPython` и
   `runRecognition`; `pipeline/asr_pipeline/preprocess.py`: `normalize_audio`;
   `pipeline/asr_pipeline/config.py`: `load_config`.

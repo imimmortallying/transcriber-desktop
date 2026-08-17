@@ -11,6 +11,7 @@ PowerShell; для скачивания и установки Python-завис�
 
 ```text
 resources/
+  runtime-manifest.json
   bin/ffmpeg/ffmpeg.exe
   models/gigaam/v3_e2e_rnnt.ckpt
   models/gigaam/v3_e2e_rnnt_tokenizer.model
@@ -23,10 +24,17 @@ resources/
 `*.exe` в `dist/`.
 
 Это текущий полный offline-дистрибутив: он устанавливает Electron-клиент,
-Python runtime, зависимости, ffmpeg и веса вместе. Возможное разделение
-часто обновляемого Client и редко обновляемого ASR Runtime, а также механизм
-небольших интернет-обновлений пока не реализованы; продуктовое направление
-зафиксировано в [документе продукта](../product/module.md).
+Python runtime, зависимости, ffmpeg и веса вместе. Runtime уже формализован
+логически: `runtime-manifest.json` попадает в корень packaged resources вместе
+с Python, pipeline, ffmpeg, весами и packaged config. Manifest задаёт
+идентичность и базовую совместимость Runtime, но не содержит путей, секретов
+или metadata обновлений.
+
+Client и Runtime пока физически используют тот же packaged resources layout;
+независимый lifecycle, отдельный Runtime installer и небольшие Client-only
+обновления ещё не реализованы. Полный offline installer продолжает содержать
+всё необходимое для работы без сети. Продуктовое направление зафиксировано в
+[документе продукта](../product/module.md).
 
 ## Конфигурации и секреты
 

@@ -3,11 +3,7 @@ const { randomUUID } = require("node:crypto");
 const { readFile, readdir, rm, stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
-
-const pipelineDirectory = app.isPackaged
-  ? path.join(process.resourcesPath, "pipeline")
-  : path.resolve(__dirname, "../pipeline");
-const pipelineConfigPath = path.join(pipelineDirectory, "config.json");
+const { getCurrentRuntime } = require("./runtime/resolveRuntime");
 
 function getResultsSettingsPath() {
   return path.join(app.getPath("userData"), "settings.json");
@@ -109,14 +105,15 @@ async function getPipelineDataDirectory() {
   }
 
   let config;
+  const runtime = getCurrentRuntime();
   try {
-    config = JSON.parse(await readFile(pipelineConfigPath, "utf8"));
+    config = JSON.parse(await readFile(runtime.pipelineConfigPath, "utf8"));
   } catch (error) {
     throw new Error(`Не удалось прочитать настройки папки результатов: ${error.message}`);
   }
 
   const dataDir = typeof config.data_dir === "string" ? config.data_dir : "../data/pipeline";
-  return path.resolve(path.dirname(pipelineConfigPath), dataDir);
+  return path.resolve(path.dirname(runtime.pipelineConfigPath), dataDir);
 }
 
 async function getUserDataDirectory() {

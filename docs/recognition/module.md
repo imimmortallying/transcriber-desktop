@@ -1,11 +1,25 @@
 # Запуск Python-пайплайна
 
+`src/runtime/resolveRuntime.js` формализует ASR Runtime как единый компонент:
+embedded Python и зависимости, Python-пайплайн, ffmpeg, веса GigaAM и packaged
+runtime-конфигурацию. Он возвращает Client пути к Runtime и перед запуском
+`src/recognition/runRecognition.js` проверяет manifest, идентичность,
+поддерживаемую API-версию и наличие ключевых ресурсов, включая фактический
+entrypoint `pipeline/asr_pipeline/cli.py`. Проверка не импортирует Python и не
+проверяет здоровье модели или внутренних зависимостей.
+
 `src/recognition/runRecognition.js` запускает `asr_pipeline.cli` для
-`preprocess` и `asr`. В dev-режиме используется `pipeline/.venv`, в packaged-режиме —
-embedded Python из `resources/python` и пакет из `resources/pipeline`.
-Для отладки или использования другого интерпретатора можно задать `ASR_PYTHON`
-с полным путём к исполняемому файлу; он имеет приоритет над обоими путями по
-умолчанию.
+`preprocess` и `asr` через этот Runtime. В dev-режиме используются исходные
+`pipeline/`, `pipeline/.venv` и `resources/`; в packaged-режиме — текущий
+resources layout приложения. `ASR_PYTHON` — явный development override с полным
+путём к интерпретатору. Packaged production Client его игнорирует и использует
+только Python из определённого приложением Runtime.
+
+`runtime-manifest.json` — неизменяемая часть Runtime. В нём находятся только
+`manifestFormatVersion`, `runtimeId`, `runtimeVersion` и `runtimeApiVersion`;
+пользователь не создаёт и не редактирует этот файл. Внутренний layout Runtime
+пока остаётся частью его контракта: физическое отделение от packaged resources,
+независимый lifecycle и Client-only updates ещё не реализованы.
 
 У embedded Python есть `python311._pth`, который полностью задаёт `sys.path`.
 Поэтому `cwd` и `PYTHONPATH` нельзя использовать для поиска `asr_pipeline`: перед

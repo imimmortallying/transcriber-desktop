@@ -1,16 +1,7 @@
-const { app } = require("electron");
 const { spawn } = require("node:child_process");
 const { readFile } = require("node:fs/promises");
 const path = require("node:path");
-
-const pipelineDirectory = app.isPackaged
-  ? path.join(process.resourcesPath, "pipeline")
-  : path.resolve(__dirname, "../../pipeline");
-const pythonExecutable = process.env.ASR_PYTHON
-  || (app.isPackaged
-    ? path.join(process.resourcesPath, "python", "python.exe")
-    : path.join(pipelineDirectory, ".venv", "Scripts", "python.exe"));
-const pipelineConfig = path.join(pipelineDirectory, "config.json");
+const { getCurrentRuntime, validateRuntime } = require("../runtime/resolveRuntime");
 const runAsrPipelineCli = [
   "import runpy, sys",
   "sys.path.insert(0, sys.argv.pop(1))",
@@ -18,15 +9,15 @@ const runAsrPipelineCli = [
   "runpy.run_module('asr_pipeline.cli', run_name='__main__')",
 ].join("; ");
 
-function runPython(args) {
+function runPython(runtime, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(pythonExecutable, [
+    const child = spawn(runtime.pythonExecutable, [
       "-c",
       runAsrPipelineCli,
-      pipelineDirectory,
+      runtime.pipelineDirectory,
       ...args,
     ], {
-      cwd: pipelineDirectory,
+      cwd: runtime.pipelineDirectory,
       windowsHide: true,
     });
     let stdout = "";
@@ -91,9 +82,10 @@ async function runRecognition(inputPath, { dataDirectory, onProgress = () => {} 
     throw new Error("Не задана папка для результатов распознавания.");
   }
 
-  const configArguments = ["--config", pipelineConfig, "--data-dir", dataDirectory];
+  const runtime = await validateRuntime(getCurrentRuntime());
+  const configArguments = ["--config", runtime.pipelineConfigPath, "--data-dir", dataDirectory];
   onProgress("Подготавливаю аудио…");
-  const preprocessOutput = await runPython([
+  const preprocessOutput = await runPython(runtime, [
     ...configArguments,
     "preprocess",
     inputPath,
@@ -101,7 +93,7 @@ async function runRecognition(inputPath, { dataDirectory, onProgress = () => {} 
   const runId = readCliValue(preprocessOutput, "run_id");
 
   onProgress("Распознаю речь…");
-  const asrOutput = await runPython([
+  const asrOutput = await runPython(runtime, [
     ...configArguments,
     "asr",
     runId,
