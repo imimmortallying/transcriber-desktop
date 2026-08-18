@@ -68,16 +68,20 @@ Runtime archive materialизуется в `$PLUGINSDIR\runtime.7z`, а bundled `
 только `Client` и его registration/shortcuts, не трогая sibling `Runtime`,
 `Runtime.staging` или `Runtime.previous`.
 
-Legacy per-user установка с тем же application identity мигрируется в её
-фактическом `InstallLocation`: legacy root становится `<ASR root>`, после штатного
-legacy uninstall в нём создаются `Client` и `Runtime`. Legacy all-users/per-machine
-установка не мигрируется автоматически: Setup останавливается и просит сначала
-удалить старую all-users версию вручную.
+Legacy per-user установка с тем же application identity не мигрируется
+автоматически. При точном legacy marker
+`<InstallLocation>\resources\python\python.exe` Setup останавливается и просит
+сначала удалить старую версию через Установленные приложения Windows; userData и
+results при этом сохраняются. После ручного удаления повторный Full Setup является
+обычной clean install. Legacy all-users/per-machine установка также блокирует Setup
+и требует ручного удаления.
 
-При failed reinstall compensating cleanup сохраняет previous Runtime, но не
-восстанавливает previous Client: штатный upgrade flow уже заменил Client до
-Runtime deployment. При failed legacy migration после legacy uninstall старое
-приложение автоматически не восстанавливается.
+Уже новая registered Client installation распознаётся по `<ASR root>\Client` и
+её штатному uninstaller, без проверки здоровья sibling Runtime: Full Setup может
+восстановить отсутствующий или повреждённый Runtime. Нераспознанный или неполный
+registered layout блокируется без автоматического удаления. При failed reinstall
+compensating cleanup сохраняет previous Runtime, но не восстанавливает previous
+Client: штатный upgrade flow уже заменил Client до Runtime deployment.
 
 ## Конфигурации и секреты
 
@@ -203,10 +207,11 @@ Runtime в sibling-каталог; Runtime не входит в `extraResources`
 ## 5. Проверка перед раздачей
 
 На чистой Windows VM вручную проверьте clean per-user install, выбор другого
-диска, upgrade legacy per-user для default и custom path, блокировку legacy
-per-machine, reinstall Full Setup, ручной uninstall с удалением Runtime и сохранностью
-`userData`/результатов, а также service uninstall с сохранением Runtime. Эти сценарии не
-покрываются Node-тестами.
+диска, блокировку legacy per-user для default и custom path с последующей clean
+install, блокировку legacy per-machine, reinstall Full Setup, repair current Client
+с отсутствующим Runtime, ручной uninstall с удалением Runtime и сохранностью
+`userData`/результатов, а также service uninstall с сохранением Runtime. Эти сценарии
+не покрываются Node-тестами.
 
 Проверьте установщик на отдельной Windows x64-машине или чистой VM, где нет
 установленных Python, Node.js и доступа в интернет. Не ограничивайтесь открытием

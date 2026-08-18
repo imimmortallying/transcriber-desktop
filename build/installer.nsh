@@ -3,10 +3,7 @@
   !include FileFunc.nsh
 
   Var legacyInstallLocation
-  Var legacyUninstallString
-  Var legacyUninstaller
   Var isExistingClientInstallation
-  Var isLegacyMigration
   Var asrRootDirectory
   Var runtimeDirectory
   Var runtimeStagingDirectory
@@ -102,7 +99,6 @@
 
 !macro customInit
   StrCpy $isExistingClientInstallation "0"
-  StrCpy $isLegacyMigration "0"
   StrCpy $asrRootDirectory ""
 
   ${if} $hasPerMachineInstallation == "1"
@@ -115,34 +111,19 @@
     Goto done
   ${endif}
 
-  IfFileExists "$legacyInstallLocation\resources\python\python.exe" migrateLegacyLayout existingClientLayout
+  IfFileExists "$legacyInstallLocation\resources\python\python.exe" blockLegacyLayout classifyRegisteredClientLayout
 
-  migrateLegacyLayout:
-    ReadRegStr $legacyUninstallString HKCU "${UNINSTALL_REGISTRY_KEY}" UninstallString
-    ${if} $legacyUninstallString == ""
-      MessageBox MB_OK|MB_ICONSTOP "The legacy ASR installation is incomplete and cannot be migrated automatically. Remove it manually, then run this setup again."
-      Quit
-    ${endif}
+  classifyRegisteredClientLayout:
+    ${GetFileName} "$legacyInstallLocation" $0
+    StrCmp $0 "Client" 0 blockUnknownRegisteredLayout
+    IfFileExists "$legacyInstallLocation\Uninstall ${PRODUCT_FILENAME}.exe" existingClientLayout blockUnknownRegisteredLayout
 
-    StrCpy $legacyUninstaller "$legacyInstallLocation\Uninstall ${PRODUCT_FILENAME}.exe"
-    IfFileExists "$legacyUninstaller" 0 legacyUninstallFailure
+  blockLegacyLayout:
+    MessageBox MB_OK|MB_ICONSTOP "Обнаружена предыдущая версия ASR в $legacyInstallLocation.$\r$\nСначала удалите её через Установленные приложения Windows, затем снова запустите Setup.$\r$\nПользовательские данные и результаты при этом сохраняются."
+    Quit
 
-    InitPluginsDir
-    CopyFiles /SILENT "$legacyUninstaller" "$PLUGINSDIR\legacy-uninstaller.exe"
-    IfErrors legacyUninstallFailure
-
-    ExecWait '"$PLUGINSDIR\legacy-uninstaller.exe" /S /KEEP_APP_DATA /currentuser --updated _?=$legacyInstallLocation' $0
-    ${if} $0 != 0
-      Goto legacyUninstallFailure
-    ${endif}
-
-    StrCpy $isExistingClientInstallation "1"
-    StrCpy $isLegacyMigration "1"
-    StrCpy $asrRootDirectory "$legacyInstallLocation"
-    Goto done
-
-  legacyUninstallFailure:
-    MessageBox MB_OK|MB_ICONSTOP "The legacy ASR installation could not be removed. Remove it manually, then run this setup again."
+  blockUnknownRegisteredLayout:
+    MessageBox MB_OK|MB_ICONSTOP "Обнаружена нераспознанная или неполная предыдущая установка ASR в $legacyInstallLocation.$\r$\nАвтоматическая замена не выполняется. Сначала удалите эту установку через Установленные приложения Windows, затем снова запустите Setup."
     Quit
 
   existingClientLayout:
@@ -246,11 +227,6 @@
   FunctionEnd
 
   Function clientDirectoryPre
-    StrCmp $isLegacyMigration "1" 0 existingClientDirectory
-    StrCpy $INSTDIR "$asrRootDirectory\Client"
-    Abort
-
-    existingClientDirectory:
     StrCmp $isExistingClientInstallation "1" 0 +2
     Abort
   FunctionEnd

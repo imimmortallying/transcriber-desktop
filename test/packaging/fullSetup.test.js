@@ -9,6 +9,10 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   const packageJson = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
   const installerScript = await readFile(path.join(projectRoot, "build", "installer.nsh"), "utf8");
   const runtimeArchiveBuilder = await readFile(path.join(projectRoot, "scripts", "buildRuntimeArchive.js"), "utf8");
+  const customInit = installerScript.slice(
+    installerScript.indexOf("!macro customInit"),
+    installerScript.indexOf("!macro customPageAfterChangeDir"),
+  );
 
   assert.equal(packageJson.build.nsis.oneClick, false);
   assert.equal(packageJson.build.nsis.allowToChangeInstallationDirectory, false);
@@ -30,8 +34,14 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /StrCpy \$isForceCurrentInstall "1"/);
   assert.match(installerScript, /legacy all-users ASR installation was found/);
   assert.match(installerScript, /\$legacyInstallLocation\\resources\\python\\python\.exe/);
-  assert.match(installerScript, /CopyFiles \/SILENT "\$legacyUninstaller" "\$PLUGINSDIR\\legacy-uninstaller\.exe"/);
-  assert.match(installerScript, /ExecWait '"\$PLUGINSDIR\\legacy-uninstaller\.exe" \/S \/KEEP_APP_DATA \/currentuser/);
+  assert.match(customInit, /IfFileExists "\$legacyInstallLocation\\resources\\python\\python\.exe" blockLegacyLayout classifyRegisteredClientLayout/);
+  assert.match(customInit, /\$\{GetFileName\} "\$legacyInstallLocation" \$0[\s\S]*StrCmp \$0 "Client" 0 blockUnknownRegisteredLayout[\s\S]*IfFileExists "\$legacyInstallLocation\\Uninstall \$\{PRODUCT_FILENAME\}\.exe" existingClientLayout blockUnknownRegisteredLayout/);
+  assert.match(customInit, /Обнаружена предыдущая версия ASR в \$legacyInstallLocation/);
+  assert.match(customInit, /Пользовательские данные и результаты при этом сохраняются\./);
+  assert.match(customInit, /Обнаружена нераспознанная или неполная предыдущая установка ASR в \$legacyInstallLocation/);
+  assert.doesNotMatch(customInit, /runtime-manifest\.json/);
+  assert.doesNotMatch(installerScript, /legacy-uninstaller\.exe/);
+  assert.doesNotMatch(installerScript, /isLegacyMigration/);
   assert.match(installerScript, /Function cleanupFailedClientInstall[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*CopyFiles \/SILENT "\$runtimeCleanupUninstaller" "\$PLUGINSDIR\\runtime-failure-uninstaller\.exe"[\s\S]*ExecWait '"\$PLUGINSDIR\\runtime-failure-uninstaller\.exe" \/S \/KEEP_APP_DATA \/currentuser --updated _\?=\$INSTDIR' \$runtimeCleanupExitCode/);
   assert.match(installerScript, /Compensating Client cleanup failed:[\s\S]*runtimeCleanupStatus/);
   assert.match(installerScript, /!macro customUnInstall[\s\S]*\$\{if\} \$\{isUpdated\}[\s\S]*Goto asrCustomUninstallDone/);
@@ -41,7 +51,6 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /The ASR Runtime could not be completely removed\.[\s\S]*ASR root: \$uninstallAsrRootDirectory[\s\S]*Remaining path: \$uninstallRuntimeRemainingPath/);
   assert.match(installerScript, /Function un\.onUninstSuccess[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*RMDir "\$uninstallAsrRootDirectory"/);
   assert.doesNotMatch(installerScript, /RMDir \/r "\$uninstallAsrRootDirectory"(?!\\)/);
-  assert.match(installerScript, /StrCpy \$asrRootDirectory "\$legacyInstallLocation"/);
   assert.match(installerScript, /\$\{GetParent\} "\$legacyInstallLocation" \$asrRootDirectory/);
   assert.doesNotMatch(installerScript, /WriteRegStr HKCU "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation/);
   assert.match(installerScript, /!insertmacro MUI_PAGE_DIRECTORY/);
