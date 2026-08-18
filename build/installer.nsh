@@ -23,9 +23,76 @@
   Var runtimeCleanupStatus
 !endif
 
+!ifdef BUILD_UNINSTALLER
+  Var uninstallAsrRootDirectory
+  Var uninstallManualRuntimeCleanupEligible
+  Var uninstallRuntimeRemainingPath
+!endif
+
 !macro customInstallMode
   StrCpy $isForceCurrentInstall "1"
 !macroend
+
+!ifdef BUILD_UNINSTALLER
+  !macro customUnInstall
+    StrCpy $uninstallAsrRootDirectory ""
+    StrCpy $uninstallManualRuntimeCleanupEligible "0"
+    StrCpy $uninstallRuntimeRemainingPath ""
+
+    ${if} ${isUpdated}
+      Goto asrCustomUninstallDone
+    ${endif}
+
+    ReadRegStr $0 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+    StrCmp "$0" "$INSTDIR" 0 asrCustomUninstallLocationValidationFailure
+
+    ${StdUtils.GetParentPath} $uninstallAsrRootDirectory "$INSTDIR"
+    StrCmp $uninstallAsrRootDirectory "" asrCustomUninstallLocationValidationFailure
+    StrCpy $uninstallManualRuntimeCleanupEligible "1"
+
+    SetOutPath "$PLUGINSDIR"
+    RMDir /r "$uninstallAsrRootDirectory\Runtime"
+    RMDir /r "$uninstallAsrRootDirectory\Runtime.staging"
+    RMDir /r "$uninstallAsrRootDirectory\Runtime.previous"
+
+    IfFileExists "$uninstallAsrRootDirectory\Runtime\NUL" asrCustomUninstallRuntimeRemaining asrCustomUninstallCheckStaging
+
+    asrCustomUninstallCheckStaging:
+      IfFileExists "$uninstallAsrRootDirectory\Runtime.staging\NUL" asrCustomUninstallStagingRemaining asrCustomUninstallCheckPrevious
+
+    asrCustomUninstallCheckPrevious:
+      IfFileExists "$uninstallAsrRootDirectory\Runtime.previous\NUL" asrCustomUninstallPreviousRemaining asrCustomUninstallDone
+
+    asrCustomUninstallRuntimeRemaining:
+      StrCpy $uninstallRuntimeRemainingPath "$uninstallAsrRootDirectory\Runtime"
+      Goto asrCustomUninstallRuntimeCleanupWarning
+
+    asrCustomUninstallStagingRemaining:
+      StrCpy $uninstallRuntimeRemainingPath "$uninstallAsrRootDirectory\Runtime.staging"
+      Goto asrCustomUninstallRuntimeCleanupWarning
+
+    asrCustomUninstallPreviousRemaining:
+      StrCpy $uninstallRuntimeRemainingPath "$uninstallAsrRootDirectory\Runtime.previous"
+
+    asrCustomUninstallRuntimeCleanupWarning:
+      MessageBox MB_OK|MB_ICONEXCLAMATION "The ASR Runtime could not be completely removed.$\r$\nASR root: $uninstallAsrRootDirectory$\r$\nRemaining path: $uninstallRuntimeRemainingPath$\r$\nClient uninstallation will continue."
+      Goto asrCustomUninstallDone
+
+    asrCustomUninstallLocationValidationFailure:
+      MessageBox MB_OK|MB_ICONEXCLAMATION "The ASR Runtime was not removed because the Client install location could not be validated.$\r$\nClient directory: $INSTDIR$\r$\nRegistered directory: $0$\r$\nClient uninstallation will continue."
+
+    asrCustomUninstallDone:
+  !macroend
+
+  Function un.onUninstSuccess
+    StrCmp $uninstallManualRuntimeCleanupEligible "1" 0 asrUninstallRootCleanupDone
+    StrCmp $uninstallAsrRootDirectory "" asrUninstallRootCleanupDone
+    SetOutPath "$PLUGINSDIR"
+    RMDir "$uninstallAsrRootDirectory"
+
+    asrUninstallRootCleanupDone:
+  FunctionEnd
+!endif
 
 !ifndef BUILD_UNINSTALLER
   !macro preInit

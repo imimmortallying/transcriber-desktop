@@ -34,6 +34,13 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /ExecWait '"\$PLUGINSDIR\\legacy-uninstaller\.exe" \/S \/KEEP_APP_DATA \/currentuser/);
   assert.match(installerScript, /Function cleanupFailedClientInstall[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*CopyFiles \/SILENT "\$runtimeCleanupUninstaller" "\$PLUGINSDIR\\runtime-failure-uninstaller\.exe"[\s\S]*ExecWait '"\$PLUGINSDIR\\runtime-failure-uninstaller\.exe" \/S \/KEEP_APP_DATA \/currentuser --updated _\?=\$INSTDIR' \$runtimeCleanupExitCode/);
   assert.match(installerScript, /Compensating Client cleanup failed:[\s\S]*runtimeCleanupStatus/);
+  assert.match(installerScript, /!macro customUnInstall[\s\S]*\$\{if\} \$\{isUpdated\}[\s\S]*Goto asrCustomUninstallDone/);
+  assert.match(installerScript, /ReadRegStr \$0 HKCU "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation[\s\S]*StrCmp "\$0" "\$INSTDIR" 0 asrCustomUninstallLocationValidationFailure/);
+  assert.match(installerScript, /\$\{StdUtils\.GetParentPath\} \$uninstallAsrRootDirectory "\$INSTDIR"[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime\.staging"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime\.previous"/);
+  assert.match(installerScript, /IfFileExists "\$uninstallAsrRootDirectory\\Runtime\\NUL" asrCustomUninstallRuntimeRemaining/);
+  assert.match(installerScript, /The ASR Runtime could not be completely removed\.[\s\S]*ASR root: \$uninstallAsrRootDirectory[\s\S]*Remaining path: \$uninstallRuntimeRemainingPath/);
+  assert.match(installerScript, /Function un\.onUninstSuccess[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*RMDir "\$uninstallAsrRootDirectory"/);
+  assert.doesNotMatch(installerScript, /RMDir \/r "\$uninstallAsrRootDirectory"(?!\\)/);
   assert.match(installerScript, /StrCpy \$asrRootDirectory "\$legacyInstallLocation"/);
   assert.match(installerScript, /\$\{GetParent\} "\$legacyInstallLocation" \$asrRootDirectory/);
   assert.doesNotMatch(installerScript, /WriteRegStr HKCU "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation/);

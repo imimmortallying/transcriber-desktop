@@ -38,10 +38,18 @@ Client и Runtime, но устанавливает их физически ра�
 
 Поддерживается только per-user установка. NSIS сохраняет собственную страницу
 выбора каталога и однозначно создаёт в выбранном root `Client` и `Runtime`; выбор
-per-machine не предлагается. Client является independently replaceable component: его uninstall
-удаляет только `Client`, а Runtime остаётся. Full Offline Setup всегда заново
-устанавливает bundled Runtime. Runtime installer, Runtime auto-update и Client
-updater пока не реализованы.
+per-machine не предлагается. Client является independently replaceable component: служебный
+uninstall с `--updated` удаляет только `Client`, а Runtime остаётся. Обычный ручной
+uninstall удаляет `Client` вместе с sibling `Runtime`, `Runtime.staging` и
+`Runtime.previous`; затем пытается удалить пустой ASR root без рекурсии. Runtime installer,
+Runtime auto-update и Client updater пока не реализованы.
+
+Перед ручным sibling cleanup uninstaller сверяет `$INSTDIR` с current-user
+`InstallLocation`. При несовпадении Runtime не удаляется, а Client cleanup продолжается.
+Runtime cleanup является best-effort: при заблокированных файлах пользователь получает
+предупреждение с ASR root и оставшимся путём. Electron userData, settings, transcripts,
+default results и внешняя results directory не относятся к installation lifecycle и не
+удаляются ни ручным, ни служебным uninstall.
 
 Размер Runtime для страницы выбора каталога не задан вручную: `npm run dist:win`
 измеряет unpacked payload и генерирует временный `build/runtime-size.nsh`. Setup
@@ -196,8 +204,9 @@ Runtime в sibling-каталог; Runtime не входит в `extraResources`
 
 На чистой Windows VM вручную проверьте clean per-user install, выбор другого
 диска, upgrade legacy per-user для default и custom path, блокировку legacy
-per-machine, reinstall Full Setup, Client uninstall с сохранением Runtime и
-сохранность `userData`/результатов. Эти сценарии не покрываются Node-тестами.
+per-machine, reinstall Full Setup, ручной uninstall с удалением Runtime и сохранностью
+`userData`/результатов, а также service uninstall с сохранением Runtime. Эти сценарии не
+покрываются Node-тестами.
 
 Проверьте установщик на отдельной Windows x64-машине или чистой VM, где нет
 установленных Python, Node.js и доступа в интернет. Не ограничивайтесь открытием
