@@ -13,6 +13,8 @@
   обработки его артефактов.
 - `packaging/module.md` — воспроизводимая сборка Windows-дистрибутива и состав
   поставки.
+- `client-update/module.md` — утверждённая архитектура жизненного цикла
+  Client-only update без повторной доставки Runtime.
 - `diarization/module.md` — сознательно отключённая диаризация и её границы.
 - `security/module.md` — сквозная security-модель: активы, угрозы, границы
   доверия, controls и их verification.

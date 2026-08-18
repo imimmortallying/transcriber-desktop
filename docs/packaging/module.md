@@ -44,6 +44,11 @@ uninstall удаляет `Client` вместе с sibling `Runtime`, `Runtime.st
 `Runtime.previous`; затем пытается удалить пустой ASR root без рекурсии. Runtime installer,
 Runtime auto-update и Client updater пока не реализованы.
 
+`Runtime.staging` и `Runtime.previous` ниже относятся только к реализованной
+доставке Runtime внутри Full Offline Setup. Они не задают будущий lifecycle
+Client-only update: его side-by-side candidate, activation, READY и rollback
+зафиксированы отдельно в [Client Update Lifecycle](../client-update/module.md).
+
 Перед ручным sibling cleanup uninstaller сверяет `$INSTDIR` с current-user
 `InstallLocation`. При несовпадении Runtime не удаляется, а Client cleanup продолжается.
 Runtime cleanup является best-effort: при заблокированных файлах пользователь получает

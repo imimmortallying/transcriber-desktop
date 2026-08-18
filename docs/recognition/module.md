@@ -24,6 +24,12 @@ Client package; resolver выводит его путь из packaged Client lay
 пока устанавливает или восстанавливает только Full Offline Setup; Runtime auto-update
 и Client updater не реализованы.
 
+Текущая `runtimeApiVersion` отражает реализованную проверку Runtime и сама по
+себе не является выбранным compatibility contract для будущего Client update.
+Принципиальные границы этого lifecycle, включая обязательную проверку
+совместимости candidate Client с установленным Runtime, описаны в
+[Client Update Lifecycle](../client-update/module.md).
+
 У embedded Python есть `python311._pth`, который полностью задаёт `sys.path`.
 Поэтому `cwd` и `PYTHONPATH` нельзя использовать для поиска `asr_pipeline`: перед
 запуском CLI JS передаёт корень `pipeline` отдельным аргументом, Python-обёртка добавляет его в
