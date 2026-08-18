@@ -10,7 +10,9 @@ function getRuntimePaths({
   projectRoot = path.resolve(__dirname, "../.."),
   environment = process.env,
 }) {
-  const runtimeRoot = isPackaged ? resourcesPath : projectRoot;
+  const runtimeRoot = isPackaged
+    ? path.resolve(resourcesPath, "..", "..", "Runtime")
+    : projectRoot;
   const resourceRoot = isPackaged ? runtimeRoot : path.join(runtimeRoot, "resources");
   const pipelineDirectory = path.join(runtimeRoot, "pipeline");
 

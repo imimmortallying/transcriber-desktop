@@ -12,23 +12,24 @@ const {
 } = require("../../src/runtime/resolveRuntime");
 
 async function writeRuntime(root, manifest = {}) {
+  const runtimeRoot = path.join(root, "Runtime");
   await Promise.all([
-    mkdir(path.join(root, "pipeline", "asr_pipeline"), { recursive: true }),
-    mkdir(path.join(root, "python"), { recursive: true }),
-    mkdir(path.join(root, "bin", "ffmpeg"), { recursive: true }),
+    mkdir(path.join(runtimeRoot, "pipeline", "asr_pipeline"), { recursive: true }),
+    mkdir(path.join(runtimeRoot, "python"), { recursive: true }),
+    mkdir(path.join(runtimeRoot, "bin", "ffmpeg"), { recursive: true }),
   ]);
   await Promise.all([
-    writeFile(path.join(root, "runtime-manifest.json"), JSON.stringify({
+    writeFile(path.join(runtimeRoot, "runtime-manifest.json"), JSON.stringify({
       manifestFormatVersion: 1,
       runtimeId: RUNTIME_ID,
       runtimeVersion: "1.0.0",
       runtimeApiVersion: RUNTIME_API_VERSION,
       ...manifest,
     })),
-    writeFile(path.join(root, "pipeline", "config.json"), "{}"),
-    writeFile(path.join(root, "pipeline", "asr_pipeline", "cli.py"), ""),
-    writeFile(path.join(root, "python", "python.exe"), ""),
-    writeFile(path.join(root, "bin", "ffmpeg", "ffmpeg.exe"), ""),
+    writeFile(path.join(runtimeRoot, "pipeline", "config.json"), "{}"),
+    writeFile(path.join(runtimeRoot, "pipeline", "asr_pipeline", "cli.py"), ""),
+    writeFile(path.join(runtimeRoot, "python", "python.exe"), ""),
+    writeFile(path.join(runtimeRoot, "bin", "ffmpeg", "ffmpeg.exe"), ""),
   ]);
 }
 
@@ -43,13 +44,18 @@ async function withRuntime(callback) {
 }
 
 function packagedRuntime(root, environment = {}) {
-  return getRuntimePaths({ isPackaged: true, resourcesPath: root, environment });
+  return getRuntimePaths({
+    isPackaged: true,
+    resourcesPath: path.join(root, "Client", "resources"),
+    environment,
+  });
 }
 
 test("accepts a compatible packaged runtime", async () => {
   await withRuntime(async (root) => {
     const runtime = await validateRuntime(packagedRuntime(root));
     assert.equal(runtime.manifest.runtimeVersion, "1.0.0");
+    assert.equal(runtime.root, path.join(root, "Runtime"));
   });
 });
 
@@ -69,16 +75,16 @@ test("rejects an unsupported runtime API version", async () => {
 
 test("rejects a missing or malformed manifest", async () => {
   await withRuntime(async (root) => {
-    await rm(path.join(root, "runtime-manifest.json"));
+    await rm(path.join(root, "Runtime", "runtime-manifest.json"));
     await assert.rejects(validateRuntime(packagedRuntime(root)), /manifest is missing/);
-    await writeFile(path.join(root, "runtime-manifest.json"), "{");
+    await writeFile(path.join(root, "Runtime", "runtime-manifest.json"), "{");
     await assert.rejects(validateRuntime(packagedRuntime(root)), /invalid JSON/);
   });
 });
 
 test("rejects a missing required runtime resource", async () => {
   await withRuntime(async (root) => {
-    await rm(path.join(root, "pipeline", "asr_pipeline", "cli.py"));
+    await rm(path.join(root, "Runtime", "pipeline", "asr_pipeline", "cli.py"));
     await assert.rejects(validateRuntime(packagedRuntime(root)), /missing pipeline CLI entry point/);
   });
 });
@@ -86,7 +92,7 @@ test("rejects a missing required runtime resource", async () => {
 test("ignores ASR_PYTHON for packaged runtimes", async () => {
   await withRuntime(async (root) => {
     const runtime = packagedRuntime(root, { ASR_PYTHON: "C:\\override\\python.exe" });
-    assert.equal(runtime.pythonExecutable, path.join(root, "python", "python.exe"));
+    assert.equal(runtime.pythonExecutable, path.join(root, "Runtime", "python", "python.exe"));
   });
 });
 

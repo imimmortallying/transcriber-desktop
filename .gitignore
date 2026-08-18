@@ -17,3 +17,7 @@ data/
 resources/python/
 resources/bin/ffmpeg/
 resources/models/gigaam/
+build/runtime.7z
+build/runtime-7za.exe
+build/runtime-size.nsh
+build/runtime-staging/

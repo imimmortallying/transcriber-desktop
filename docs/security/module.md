@@ -71,13 +71,17 @@ security audit и не утверждает наличие уязвимости 
   распознавания.
 - **Trust boundary:** Electron Client → локальный ASR Runtime.
 - **Control:** `src/runtime/resolveRuntime.js` определяет Runtime только из
-  application-controlled packaged/dev layout. Перед запуском Python Client
+  application-controlled packaged/dev layout: packaged Client выводит sibling
+  `<ASR root>/Runtime` из `<ASR root>/Client`, а development использует исходный
+  layout. Перед запуском Python Client
   читает `runtime-manifest.json`, проверяет format, identity и API version, а
   также наличие Python, pipeline/config, фактического CLI entrypoint и ffmpeg.
   Имена и состав файлов модели остаются деталями реализации Runtime: Client их
   не знает. Это не криптографическая проверка целостности и не проверка
   внутренних Python зависимостей или здоровья модели. Пользовательская
-  настройка пути Runtime не добавлена.
+  настройка пути Runtime не добавлена. Runtime находится вне Client uninstall
+  lifecycle; в поддерживаемой per-user установке он всё ещё доступен на запись
+  владельцу учётной записи.
 - **Implementation:** `runtime-manifest.json`; `src/runtime/resolveRuntime.js`;
   `src/recognition/runRecognition.js` вызывает preflight перед `spawn`.
 - **Verification:** `npm run test:runtime` проверяет совместимый Runtime,
@@ -135,7 +139,7 @@ security audit и не утверждает наличие уязвимости 
 - **Control:** `pipeline/config.json` исключён из Git; packaged-приложение
   получает `pipeline/config.app.example.json` как `pipeline/config.json`, а не
   локальный dev-файл.
-- **Implementation:** `.gitignore`; `package.json` → `build.extraResources`;
+- **Implementation:** `.gitignore`; `build/installer.nsh` и `package.json`;
   правила сборки — в [документе упаковки](../packaging/module.md).
 - **Verification:** автоматического сканирования артефакта или секретов нет;
   ручная проверка состава перед внешней передачей описана в документе упаковки;
@@ -156,7 +160,7 @@ security audit и не утверждает наличие уязвимости 
   embeddable Python и моделей, а также проверку полного offline-дистрибутива на
   чистой машине.
 - **Implementation:** `package-lock.json`, `pipeline/requirements-app.txt`,
-  `package.json` (`build.extraResources`) и
+  `build/installer.nsh` и
   [документ упаковки](../packaging/module.md).
 - **Verification:** автоматического vulnerability scanning, SBOM, проверки
   происхождения или подписи артефакта в проекте не зафиксировано; ручная

@@ -7,7 +7,7 @@ PowerShell; для скачивания и установки Python-завис�
 
 ## Что получится
 
-После подготовки ресурсов структура должна содержать:
+Перед сборкой Full Offline Setup исходный Runtime payload должен содержать:
 
 ```text
 resources/
@@ -20,21 +20,48 @@ resources/
   python/Lib/site-packages/...
 ```
 
-`npm run dist:win` включит эти ресурсы в приложение и создаст NSIS-установщик
-`*.exe` в `dist/`.
+`npm run dist:win` создаёт Full Offline NSIS Setup `*.exe` в `dist/`. Он содержит
+Client и Runtime, но устанавливает их физически раздельно:
 
-Это текущий полный offline-дистрибутив: он устанавливает Electron-клиент,
-Python runtime, зависимости, ffmpeg и веса вместе. Runtime уже формализован
-логически: `runtime-manifest.json` попадает в корень packaged resources вместе
-с Python, pipeline, ffmpeg, весами и packaged config. Manifest задаёт
-идентичность и базовую совместимость Runtime, но не содержит путей, секретов
-или metadata обновлений.
+```text
+<ASR root>/
+  Client/                 # NSIS application install directory
+    local-asr-prototype.exe
+    resources/app.asar
+  Runtime/                # sibling; не входит в Client package
+    runtime-manifest.json
+    python/
+    pipeline/
+    bin/ffmpeg/
+    models/gigaam/
+```
 
-Client и Runtime пока физически используют тот же packaged resources layout;
-независимый lifecycle, отдельный Runtime installer и небольшие Client-only
-обновления ещё не реализованы. Полный offline installer продолжает содержать
-всё необходимое для работы без сети. Продуктовое направление зафиксировано в
-[документе продукта](../product/module.md).
+Поддерживается только per-user установка. NSIS сохраняет собственную страницу
+выбора каталога и однозначно создаёт в выбранном root `Client` и `Runtime`; выбор
+per-machine не предлагается. Client является independently replaceable component: его uninstall
+удаляет только `Client`, а Runtime остаётся. Full Offline Setup всегда заново
+устанавливает bundled Runtime. Runtime installer, Runtime auto-update и Client
+updater пока не реализованы.
+
+Размер Runtime для страницы выбора каталога не задан вручную: `npm run dist:win`
+измеряет unpacked payload и генерирует временный `build/runtime-size.nsh`. Setup
+показывает final размер Client + Runtime. Перед распаковкой он отдельно проверяет
+свободное место для сжатого Runtime archive на системном temporary drive
+(`$PLUGINSDIR`) и для unpacked staging-копии на выбранном ASR root. Поэтому при
+reinstall на root должно быть свободно место ещё для одной Runtime-копии.
+
+Runtime archive materialизуется в `$PLUGINSDIR\runtime.7z`, а затем
+`Nsis7z::Extract` распаковывает его в `Runtime.staging`. Плагин Nsis7z 19.00 не
+возвращает status value в NSIS stack; после вызова Setup проверяет staging
+`runtime-manifest.json`. При сбое сообщение содержит этап, archive path, его
+размер из build metadata и destination path, а staging сохраняется для
+диагностики.
+
+Legacy per-user установка с тем же application identity мигрируется в её
+фактическом `InstallLocation`: legacy root становится `<ASR root>`, после штатного
+legacy uninstall в нём создаются `Client` и `Runtime`. Legacy all-users/per-machine
+установка не мигрируется автоматически: Setup останавливается и просит сначала
+удалить старую all-users версию вручную.
 
 ## Конфигурации и секреты
 
@@ -151,11 +178,18 @@ npm run dist:win
 Get-ChildItem .\dist\*.exe
 ```
 
-Результат — NSIS-установщик `*.exe` в `dist/`. В текущей конфигурации
-`electron-builder` используется classic NSIS-мастер (`oneClick: false`) с
-выбором каталога установки (`allowToChangeInstallationDirectory: true`).
+Результат — Full Offline NSIS-установщик `*.exe` в `dist/`. В текущей
+конфигурации `electron-builder` используется per-user classic NSIS-мастер
+(`oneClick: false`, `allowElevation: false`) с собственной страницей выбора
+каталога. `build/installer.nsh` доставляет
+Runtime в sibling-каталог; Runtime не входит в `extraResources` Client package.
 
 ## 5. Проверка перед раздачей
+
+На чистой Windows VM вручную проверьте clean per-user install, выбор другого
+диска, upgrade legacy per-user для default и custom path, блокировку legacy
+per-machine, reinstall Full Setup, Client uninstall с сохранением Runtime и
+сохранность `userData`/результатов. Эти сценарии не покрываются Node-тестами.
 
 Проверьте установщик на отдельной Windows x64-машине или чистой VM, где нет
 установленных Python, Node.js и доступа в интернет. Не ограничивайтесь открытием
