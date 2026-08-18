@@ -32,6 +32,8 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /\$legacyInstallLocation\\resources\\python\\python\.exe/);
   assert.match(installerScript, /CopyFiles \/SILENT "\$legacyUninstaller" "\$PLUGINSDIR\\legacy-uninstaller\.exe"/);
   assert.match(installerScript, /ExecWait '"\$PLUGINSDIR\\legacy-uninstaller\.exe" \/S \/KEEP_APP_DATA \/currentuser/);
+  assert.match(installerScript, /Function cleanupFailedClientInstall[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*CopyFiles \/SILENT "\$runtimeCleanupUninstaller" "\$PLUGINSDIR\\runtime-failure-uninstaller\.exe"[\s\S]*ExecWait '"\$PLUGINSDIR\\runtime-failure-uninstaller\.exe" \/S \/KEEP_APP_DATA \/currentuser --updated _\?=\$INSTDIR' \$runtimeCleanupExitCode/);
+  assert.match(installerScript, /Compensating Client cleanup failed:[\s\S]*runtimeCleanupStatus/);
   assert.match(installerScript, /StrCpy \$asrRootDirectory "\$legacyInstallLocation"/);
   assert.match(installerScript, /\$\{GetParent\} "\$legacyInstallLocation" \$asrRootDirectory/);
   assert.doesNotMatch(installerScript, /WriteRegStr HKCU "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation/);
@@ -44,8 +46,10 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /File \/oname=runtime\.7z/);
   assert.match(installerScript, /File \/oname=runtime-7za\.exe/);
   assert.match(installerScript, /Call checkRuntimeArchiveSpace/);
+  assert.match(installerScript, /Call checkRuntimeArchiveSpace\s+IfErrors runtimeArchivePreflightFailure/);
   assert.match(installerScript, /\$\{DriveSpace\} "\$PLUGINSDIR" "\/D=F \/S=K" \$0/);
   assert.match(installerScript, /Call checkRuntimeStagingSpace/);
+  assert.match(installerScript, /Call checkRuntimeStagingSpace\s+IfErrors runtimeStagingPreflightFailure/);
   assert.match(installerScript, /\$\{DriveSpace\} "\$asrRootDirectory" "\/D=F \/S=K" \$0/);
   assert.match(installerScript, /StrCpy \$runtimeDirectory "\$asrRootDirectory\\Runtime"/);
   assert.match(installerScript, /StrCpy \$runtimeStagingDirectory "\$asrRootDirectory\\Runtime\.staging"/);
@@ -62,6 +66,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /7za\.exe output: \$runtimeExtractionOutput/);
   assert.doesNotMatch(installerScript, /Nsis7z::Extract/);
   assert.doesNotMatch(installerScript, /RMDir \/r "\$runtimeStagingDirectory"\s+MessageBox MB_OK\|MB_ICONSTOP "Unable to replace the ASR Runtime/);
+  assert.doesNotMatch(installerScript, /RMDir \/r "\$runtimeDirectory"/);
   assert.match(
     installerScript,
     /runtimeExtracted:\s+; Runtime\.staging is the current output directory after extraction\.[\s\S]*SetOutPath "\$PLUGINSDIR"\s+IfFileExists "\$runtimeDirectory\\\*\.\*" replaceExistingRuntime installStagedRuntime/,

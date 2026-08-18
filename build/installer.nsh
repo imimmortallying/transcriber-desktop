@@ -16,6 +16,11 @@
   Var runtimeExtractorPath
   Var runtimeExtractionExitCode
   Var runtimeExtractionOutput
+  Var runtimeFailureStage
+  Var runtimeFailureError
+  Var runtimeCleanupUninstaller
+  Var runtimeCleanupExitCode
+  Var runtimeCleanupStatus
 !endif
 
 !macro customInstallMode
@@ -98,35 +103,79 @@
   FunctionEnd
 
   Function checkRuntimeArchiveSpace
+    ClearErrors
     ${DriveSpace} "$PLUGINSDIR" "/D=F /S=K" $0
     IfErrors runtimeArchiveSpaceUnknown
     IntCmp $0 ${RUNTIME_ARCHIVE_SIZE} runtimeArchiveSpaceAvailable runtimeArchiveSpaceInsufficient runtimeArchiveSpaceAvailable
 
     runtimeArchiveSpaceUnknown:
-      MessageBox MB_OK|MB_ICONSTOP "Unable to determine free space on the system temporary drive for the bundled ASR Runtime."
-      Quit
+      StrCpy $runtimeFailureStage "archive-space preflight"
+      StrCpy $runtimeFailureError "Unable to determine free space on the system temporary drive for the bundled ASR Runtime."
+      SetErrors
+      Return
 
     runtimeArchiveSpaceInsufficient:
-      MessageBox MB_OK|MB_ICONSTOP "The system temporary drive does not have enough free space for the bundled ASR Runtime archive."
-      Quit
+      StrCpy $runtimeFailureStage "archive-space preflight"
+      StrCpy $runtimeFailureError "The system temporary drive does not have enough free space for the bundled ASR Runtime archive."
+      SetErrors
+      Return
 
     runtimeArchiveSpaceAvailable:
+      ClearErrors
   FunctionEnd
 
   Function checkRuntimeStagingSpace
+    ClearErrors
     ${DriveSpace} "$asrRootDirectory" "/D=F /S=K" $0
     IfErrors runtimeStagingSpaceUnknown
     IntCmp $0 ${RUNTIME_UNPACKED_SIZE} runtimeStagingSpaceAvailable runtimeStagingSpaceInsufficient runtimeStagingSpaceAvailable
 
     runtimeStagingSpaceUnknown:
-      MessageBox MB_OK|MB_ICONSTOP "Unable to determine free space on the selected installation drive for the ASR Runtime."
-      Quit
+      StrCpy $runtimeFailureStage "staging-space preflight"
+      StrCpy $runtimeFailureError "Unable to determine free space on the selected installation drive for the ASR Runtime."
+      SetErrors
+      Return
 
     runtimeStagingSpaceInsufficient:
-      MessageBox MB_OK|MB_ICONSTOP "The selected installation drive does not have enough free space to stage the ASR Runtime. Reinstall requires free space for a second Runtime copy."
-      Quit
+      StrCpy $runtimeFailureStage "staging-space preflight"
+      StrCpy $runtimeFailureError "The selected installation drive does not have enough free space to stage the ASR Runtime. Reinstall requires free space for a second Runtime copy."
+      SetErrors
+      Return
 
     runtimeStagingSpaceAvailable:
+      ClearErrors
+  FunctionEnd
+
+  Function cleanupFailedClientInstall
+    StrCpy $runtimeCleanupStatus "Compensating Client cleanup completed. Electron user data was kept."
+    SetOutPath "$PLUGINSDIR"
+    StrCpy $runtimeCleanupUninstaller "$INSTDIR\Uninstall ${PRODUCT_FILENAME}.exe"
+    IfFileExists "$runtimeCleanupUninstaller" 0 runtimeCleanupUninstallerMissing
+
+    CopyFiles /SILENT "$runtimeCleanupUninstaller" "$PLUGINSDIR\runtime-failure-uninstaller.exe"
+    IfErrors runtimeCleanupCopyFailure
+
+    ClearErrors
+    ExecWait '"$PLUGINSDIR\runtime-failure-uninstaller.exe" /S /KEEP_APP_DATA /currentuser --updated _?=$INSTDIR' $runtimeCleanupExitCode
+    IfErrors runtimeCleanupLaunchFailure
+    StrCmp $runtimeCleanupExitCode "0" +2
+      Goto runtimeCleanupUninstallFailure
+    Return
+
+    runtimeCleanupUninstallerMissing:
+      StrCpy $runtimeCleanupStatus "Compensating Client cleanup failed: the new Client uninstaller is missing."
+      Return
+
+    runtimeCleanupCopyFailure:
+      StrCpy $runtimeCleanupStatus "Compensating Client cleanup failed: the new Client uninstaller could not be copied to temporary storage."
+      Return
+
+    runtimeCleanupLaunchFailure:
+      StrCpy $runtimeCleanupStatus "Compensating Client cleanup failed: the new Client uninstaller could not be started."
+      Return
+
+    runtimeCleanupUninstallFailure:
+      StrCpy $runtimeCleanupStatus "Compensating Client cleanup failed: the new Client uninstaller exited with code $runtimeCleanupExitCode."
   FunctionEnd
 
   Function clientDirectoryPre
@@ -157,6 +206,7 @@
   RMDir /r "$runtimeBackupDirectory"
 
   Call checkRuntimeArchiveSpace
+  IfErrors runtimeArchivePreflightFailure
   SetOutPath "$PLUGINSDIR"
   SetCompress off
   File /oname=runtime.7z "${BUILD_RESOURCES_DIR}\runtime.7z"
@@ -170,6 +220,7 @@
   StrCpy $runtimeArchiveSize "${RUNTIME_ARCHIVE_SIZE}"
 
   Call checkRuntimeStagingSpace
+  IfErrors runtimeStagingPreflightFailure
   SetOutPath "$runtimeStagingDirectory"
   IfFileExists "$runtimeStagingDirectory\NUL" 0 runtimeStagingMissing
   nsExec::ExecToStack /OEM '"$runtimeExtractorPath" x -y "-o$runtimeStagingDirectory" "$runtimeArchivePath"'
@@ -178,24 +229,41 @@
   ${if} $runtimeExtractionExitCode != "0"
     Goto runtimeExtractionFailure
   ${endif}
-  IfFileExists "$runtimeStagingDirectory\runtime-manifest.json" runtimeExtracted
-    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime post-extraction validation failed.$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\n7za.exe exit code: $runtimeExtractionExitCode$\r$\n7za.exe output: $runtimeExtractionOutput$\r$\nThe staging directory was kept for diagnostics."
+  IfFileExists "$runtimeStagingDirectory\runtime-manifest.json" runtimeExtracted runtimePostExtractionValidationFailure
+
+  runtimeArchivePreflightFailure:
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime installation failed.$\r$\nStage: $runtimeFailureStage$\r$\nError: $runtimeFailureError$\r$\n$runtimeCleanupStatus"
+    Quit
+
+  runtimeStagingPreflightFailure:
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime installation failed.$\r$\nStage: $runtimeFailureStage$\r$\nError: $runtimeFailureError$\r$\n$runtimeCleanupStatus"
+    Quit
+
+  runtimePostExtractionValidationFailure:
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime post-extraction validation failed.$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\n7za.exe exit code: $runtimeExtractionExitCode$\r$\n7za.exe output: $runtimeExtractionOutput$\r$\nThe staging directory was kept for diagnostics.$\r$\n$runtimeCleanupStatus"
     Quit
 
   runtimeArchiveMissing:
-    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: archive materialization$\r$\nArchive path: $runtimeArchivePath$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: runtime.7z is missing before extraction."
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: archive materialization$\r$\nArchive path: $runtimeArchivePath$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: runtime.7z is missing before extraction.$\r$\n$runtimeCleanupStatus"
     Quit
 
   runtimeExtractorMissing:
-    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: extractor materialization$\r$\nArchive path: $runtimeArchivePath$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: bundled 7za.exe is missing before extraction."
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: extractor materialization$\r$\nArchive path: $runtimeArchivePath$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: bundled 7za.exe is missing before extraction.$\r$\n$runtimeCleanupStatus"
     Quit
 
   runtimeStagingMissing:
-    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: staging directory creation$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: Runtime.staging was not created before extraction."
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: staging directory creation$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: Runtime.staging was not created before extraction.$\r$\n$runtimeCleanupStatus"
     Quit
 
   runtimeExtractionFailure:
-    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime extraction failed.$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\n7za.exe exit code: $runtimeExtractionExitCode$\r$\n7za.exe output: $runtimeExtractionOutput$\r$\nThe staging directory was kept for diagnostics."
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime extraction failed.$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\n7za.exe exit code: $runtimeExtractionExitCode$\r$\n7za.exe output: $runtimeExtractionOutput$\r$\nThe staging directory was kept for diagnostics.$\r$\n$runtimeCleanupStatus"
     Quit
 
   runtimeExtracted:
@@ -219,19 +287,23 @@
     Rename "$runtimeBackupDirectory" "$runtimeDirectory"
     IfErrors runtimeRestoreFailure
 
-    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime replacement failed. The previous Runtime was restored.$\r$\nStaging directory: $runtimeStagingDirectory"
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime replacement failed. The previous Runtime was restored.$\r$\nStaging directory: $runtimeStagingDirectory$\r$\n$runtimeCleanupStatus"
     Quit
 
   runtimeBackupFailure:
-    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime replacement failed before staging activation. The existing Runtime was left unchanged.$\r$\nStaging directory: $runtimeStagingDirectory"
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime replacement failed before staging activation. The existing Runtime was left unchanged.$\r$\nStaging directory: $runtimeStagingDirectory$\r$\n$runtimeCleanupStatus"
     Quit
 
   runtimeStagingPromotionCleanFailure:
-    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime replacement failed while activating the staged Runtime.$\r$\nStaging directory: $runtimeStagingDirectory"
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime replacement failed while activating the staged Runtime.$\r$\nStaging directory: $runtimeStagingDirectory$\r$\n$runtimeCleanupStatus"
     Quit
 
   runtimeRestoreFailure:
-    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime replacement failed and the previous Runtime could not be restored automatically.$\r$\nStaging directory: $runtimeStagingDirectory$\r$\nPrevious Runtime backup: $runtimeBackupDirectory"
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime replacement failed and the previous Runtime could not be restored automatically.$\r$\nStaging directory: $runtimeStagingDirectory$\r$\nPrevious Runtime backup: $runtimeBackupDirectory$\r$\n$runtimeCleanupStatus"
     Quit
 
   runtimeInstalled:

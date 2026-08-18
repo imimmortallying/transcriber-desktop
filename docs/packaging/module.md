@@ -50,18 +50,26 @@ updater пока не реализованы.
 (`$PLUGINSDIR`) и для unpacked staging-копии на выбранном ASR root. Поэтому при
 reinstall на root должно быть свободно место ещё для одной Runtime-копии.
 
-Runtime archive materialизуется в `$PLUGINSDIR\runtime.7z`, а затем
-`Nsis7z::Extract` распаковывает его в `Runtime.staging`. Плагин Nsis7z 19.00 не
-возвращает status value в NSIS stack; после вызова Setup проверяет staging
+Runtime archive materialизуется в `$PLUGINSDIR\runtime.7z`, а bundled `7za.exe`
+распаковывает его в `Runtime.staging`. Setup проверяет exit code и staging
 `runtime-manifest.json`. При сбое сообщение содержит этап, archive path, его
-размер из build metadata и destination path, а staging сохраняется для
-диагностики.
+размер из build metadata, destination path и краткий вывод `7za.exe`; staging
+сохраняется для диагностики. Поскольку Client files, shortcuts и registry уже
+созданы до Runtime deployment, Runtime failure запускает временную копию
+штатного нового Client uninstaller с сохранением Electron userData. Он удаляет
+только `Client` и его registration/shortcuts, не трогая sibling `Runtime`,
+`Runtime.staging` или `Runtime.previous`.
 
 Legacy per-user установка с тем же application identity мигрируется в её
 фактическом `InstallLocation`: legacy root становится `<ASR root>`, после штатного
 legacy uninstall в нём создаются `Client` и `Runtime`. Legacy all-users/per-machine
 установка не мигрируется автоматически: Setup останавливается и просит сначала
 удалить старую all-users версию вручную.
+
+При failed reinstall compensating cleanup сохраняет previous Runtime, но не
+восстанавливает previous Client: штатный upgrade flow уже заменил Client до
+Runtime deployment. При failed legacy migration после legacy uninstall старое
+приложение автоматически не восстанавливается.
 
 ## Конфигурации и секреты
 
