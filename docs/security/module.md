@@ -79,9 +79,10 @@ security audit и не утверждает наличие уязвимости 
   Имена и состав файлов модели остаются деталями реализации Runtime: Client их
   не знает. Это не криптографическая проверка целостности и не проверка
   внутренних Python зависимостей или здоровья модели. Пользовательская
-  настройка пути Runtime не добавлена. Runtime находится вне Client uninstall
-  lifecycle; в поддерживаемой per-user установке он всё ещё доступен на запись
-  владельцу учётной записи.
+  настройка пути Runtime не добавлена. Служебный uninstall/reinstall Client
+  сохраняет Runtime, тогда как обычный ручной uninstall пользователя намеренно
+  удаляет Runtime как внутренний компонент приложения. В поддерживаемой
+  per-user установке Runtime всё ещё доступен на запись владельцу учётной записи.
 - **Implementation:** `runtime-manifest.json`; `src/runtime/resolveRuntime.js`;
   `src/recognition/runRecognition.js` вызывает preflight перед `spawn`.
 - **Verification:** `npm run test:runtime` проверяет совместимый Runtime,

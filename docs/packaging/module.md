@@ -83,6 +83,23 @@ registered layout блокируется без автоматического �
 compensating cleanup сохраняет previous Runtime, но не восстанавливает previous
 Client: штатный upgrade flow уже заменил Client до Runtime deployment.
 
+## Lifecycle Full Setup и удаления
+
+| Сценарий | Client | Runtime и staging | Пользовательские данные |
+| --- | --- | --- | --- |
+| Clean install | Создаётся в `<root>/Client`. | Full Setup распаковывает Runtime в `Runtime.staging`, проверяет manifest и продвигает его в `<root>/Runtime`. | Не создаются и не удаляются установщиком. |
+| Full Setup reinstall | Заменяется штатным install flow. | Новый payload сначала проходит staging; существующий `Runtime` временно становится `Runtime.previous`, а после успешного promotion удаляется. | Сохраняются. |
+| Runtime deployment failure | Compensating cleanup удаляет новый Client, shortcuts и регистрацию штатным uninstaller. | Existing `Runtime`, `Runtime.previous` и диагностический `Runtime.staging` не удаляются. При reinstall previous Client автоматически не восстанавливается. | Сохраняются. |
+| Manual user uninstall | Штатно удаляется. | Best-effort удаляются sibling `Runtime`, `Runtime.staging` и `Runtime.previous`; пустой root удаляется только без рекурсии. | Сохраняются. |
+| Service uninstall | В служебной uninstall-фазе удаляет только Client. | Не затрагивает Runtime, staging и backup. | Сохраняются. |
+| Full Setup repair | Existing Client допускается без проверки здоровья Runtime. | Full Setup заново доставляет Runtime; это repair отсутствующего или повреждённого Runtime. | Сохраняются. |
+| Legacy monolith | Не изменяется автоматически. | Setup блокируется до ручного удаления legacy приложения; последующий Setup — clean install. | Сохраняются при удалении legacy приложения. |
+
+`Runtime.staging` — временная кандидатная копия. `Runtime.previous` — временный
+backup уже рабочего Runtime на время promotion. Эти директории не считаются
+пользовательскими данными: при обычном uninstall они удаляются вместе с Runtime,
+а при ошибке deployment сохраняются для диагностики и защиты уже рабочего Runtime.
+
 ## Конфигурации и секреты
 
 В сборку должен попадать только `pipeline/config.app.example.json`, который
