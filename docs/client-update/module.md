@@ -3,17 +3,21 @@
 Этот документ — source of truth для утверждённой принципиальной архитектуры
 обновления Client без повторной доставки тяжёлого ASR Runtime. Он описывает
 целевую модель следующего milestone, а не реализованное поведение: Client
-updater, update source и соответствующая инфраструктура пока отсутствуют. Уже
-реализована только release/build граница: `npm run dist:client` создаёт один
-provider-neutral ZIP Client bundle без Runtime. Получение, verification, staging,
-activation и запуск этого artifact пока не реализованы.
+updater, update source, verification, staging и activation coordination пока
+отсутствуют. Уже реализованы release/build граница — `npm run dist:client` создаёт
+один provider-neutral ZIP Client bundle без Runtime — и ограниченный stable launch
+stub. Получение, verification, staging, activation и запуск полученного artifact
+пока не реализованы.
 Фактические Full Setup, Runtime repair и uninstall описаны в
 [документе упаковки](../packaging/module.md).
 
-В текущем Full Setup чистая Client installation уже размещается в
-`<ASR root>/Clients/<client version>`, но это не является реализацией Client
-update lifecycle: versioned directory пока принадлежит обычному Full Setup, а
-registration, direct shortcuts и uninstaller временно принадлежат текущему Client.
+В текущем Full Setup чистая Client installation размещается в
+`<ASR root>/Clients/<client version>`. Также реализован root-level stable launch
+stub: Windows shortcuts указывают на него, а он временно запускает единственный
+каталог Client под `Clients`. Это ещё не является реализацией Client update lifecycle:
+stub не хранит active/candidate/known-good, не выполняет READY, activation, recovery
+или rollback. Registration `InstallLocation` и uninstaller временно остаются
+принадлежностью текущего Client.
 
 ## Граница milestone
 
@@ -65,7 +69,7 @@ compatibility check происходят до staging и activation. Больш�
 | **candidate** | Полностью подготовленная рядом с текущей новая версия Client; до подтверждённого запуска не является known-good. |
 | **active** | Версия, которую должна запускать стабильная точка входа. |
 | **known-good** | Последняя версия Client с подтверждённым READY; до commit предыдущая known-good остаётся восстанавливаемой. |
-| **stable launch/update infrastructure** | Стабильная роль вне заменяемой версии Client: определяет active, запускает его и участвует в activation, recovery и rollback. Это архитектурная роль, а не выбранный executable layout. |
+| **stable launch/update infrastructure** | Стабильная роль вне заменяемой версии Client: определяет active, запускает его и участвует в activation, recovery и rollback. Текущий `asr-launch.exe` реализует только ограниченную launch-часть этой роли: временно принимает ровно один Client и не определяет active. |
 | **working Client** | Выполняет user-facing flow, discovery/acquisition и подготовку update; перед activation завершает работу и делает handoff stable infrastructure. |
 
 После handoff transaction обязана завершаться или восстанавливаться без старого

@@ -69,12 +69,15 @@ security audit и не утверждает наличие уязвимости 
 - **Threat:** отсутствующий, повреждённый или несовместимый Runtime мог бы
   привести к запуску неподходящего subprocess либо неясной ошибке во время
   распознавания.
-- **Trust boundary:** Electron Client → локальный ASR Runtime.
+- **Trust boundary:** stable launcher → ожидаемый локальный Client → локальный ASR Runtime.
 - **Control:** `src/runtime/resolveRuntime.js` определяет Runtime только из
   application-controlled packaged/dev layout: в packaged-режиме он получает
   `installationRoot` и выводит shared `<installationRoot>/Runtime`, а
-  development использует исходный layout. Пока stable launch infrastructure
-  отсутствует, `src/runtime/resolveCurrentClientInstallationRoot.js` временно
+  development использует исходный layout. Root-level `asr-launch.exe` выводит
+  installation root из собственного каталога и временно запускает только expected
+  executable из единственного directory под `Clients`; он не принимает arbitrary
+  executable path и не использует shell. Он пока не передаёт installation context
+  Client. Поэтому `src/runtime/resolveCurrentClientInstallationRoot.js` временно
   выводит `installationRoot` из текущего
   `<ASR root>/Clients/<client version>/resources` layout;
   это единственное место, знающее его геометрию. Runtime resolver не зависит от
@@ -158,23 +161,39 @@ security audit и не утверждает наличие уязвимости 
 ### Windows-дистрибутив и supply chain
 
 - **Asset:** исполняемый код, Python runtime, ffmpeg, модели и сторонние npm/
-  Python-зависимости, входящие в дистрибутив.
+  Python-зависимости, входящие в дистрибутив, и compiler, создающий stable
+  launcher.
 - **Threat:** подмена, уязвимая или непреднамеренно изменённая зависимость либо
-  ресурс сборки.
+  ресурс сборки, включая compiler archive для stable launcher.
 - **Trust boundary:** внешние источники зависимостей и ресурсов → среда сборки
-  → Windows-дистрибутив.
+  → stable launcher и Windows-дистрибутив. Получение NSIS compiler — build-time
+  supply-chain boundary, отдельная от будущей verification Client update artifact.
 - **Control:** Node-зависимости зафиксированы `package-lock.json`; Python
   runtime-зависимости закреплены в `pipeline/requirements-app.txt`, а GigaAM
   указан commit Git-репозитория. Документ сборки задаёт источники ffmpeg,
   embeddable Python и моделей, а также проверку полного offline-дистрибутива на
-  чистой машине.
+  чистой машине. Stable launcher компилируется из repository-owned
+  `build/stable-launcher.nsi`: `scripts/buildStableLauncher.js` получает только
+  определённый в repository URL archive pinned NSIS version и сверяет bytes с
+  repository-defined SHA-512 до извлечения или запуска compiler. Unverified или
+  corrupted archive не используется. Machine-specific electron-builder cache и
+  undocumented/private electron-builder internals не являются provenance compiler.
+  Этот control защищает provenance и integrity compiler, но не устанавливает
+  cryptographic trust для установленных Client releases; их future verification
+  остаётся частью Client Update Lifecycle. Изменение compiler origin, version,
+  checksum или acquisition mechanism security-relevant и требует обновления
+  этого документа.
 - **Implementation:** `package-lock.json`, `pipeline/requirements-app.txt`,
-  `build/installer.nsh` и
+  `build/installer.nsh`, `build/stable-launcher.nsi`,
+  `scripts/buildStableLauncher.js` и
   [документ упаковки](../packaging/module.md).
 - **Verification:** автоматического vulnerability scanning, SBOM, проверки
   происхождения или подписи артефакта в проекте не зафиксировано; ручная
   проверка — действия по сборке и проверка на чистой offline VM из документа
-  упаковки; выбор дополнительных supply-chain controls остаётся открытым.
+  упаковки. `npm run build:launcher` проверяет SHA-512 до compiler use, а
+  `npm run test:packaging` фиксирует pinned version, origin, checksum и отказ от
+  machine-specific cache/private electron-builder internals. Выбор дополнительных
+  supply-chain controls остаётся открытым.
 
 ## Будущие сетевые компоненты
 

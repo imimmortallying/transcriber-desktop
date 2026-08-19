@@ -19,6 +19,7 @@
   Var runtimeCleanupUninstaller
   Var runtimeCleanupExitCode
   Var runtimeCleanupStatus
+  Var stableLauncherPath
 !endif
 
 !ifdef BUILD_UNINSTALLER
@@ -59,6 +60,7 @@
     StrCpy $uninstallManualRuntimeCleanupEligible "1"
 
     SetOutPath "$PLUGINSDIR"
+    Delete "$uninstallAsrRootDirectory\asr-launch.exe"
     RMDir /r "$uninstallAsrRootDirectory\Runtime"
     RMDir /r "$uninstallAsrRootDirectory\Runtime.staging"
     RMDir /r "$uninstallAsrRootDirectory\Runtime.previous"
@@ -368,4 +370,28 @@
     Quit
 
   runtimeInstalled:
+    SetOutPath "$asrRootDirectory"
+    File /oname=asr-launch.exe "${BUILD_RESOURCES_DIR}\stable-launcher.exe"
+    StrCpy $stableLauncherPath "$asrRootDirectory\asr-launch.exe"
+    IfFileExists "$stableLauncherPath" stableLauncherInstalled stableLauncherMissing
+
+  stableLauncherMissing:
+    MessageBox MB_OK|MB_ICONSTOP "ASR installation completed without its stable launcher. Run Full Setup again to repair the installation."
+    Quit
+
+  stableLauncherInstalled:
+    IfFileExists "$newDesktopLink" 0 stableLauncherStartMenuShortcut
+    Delete "$newDesktopLink"
+    CreateShortCut "$newDesktopLink" "$stableLauncherPath" "" "$stableLauncherPath" 0 "" "" "${APP_DESCRIPTION}"
+    ClearErrors
+    WinShell::SetLnkAUMI "$newDesktopLink" "${APP_ID}"
+
+  stableLauncherStartMenuShortcut:
+    IfFileExists "$newStartMenuLink" 0 stableLauncherShortcutsDone
+    Delete "$newStartMenuLink"
+    CreateShortCut "$newStartMenuLink" "$stableLauncherPath" "" "$stableLauncherPath" 0 "" "" "${APP_DESCRIPTION}"
+    ClearErrors
+    WinShell::SetLnkAUMI "$newStartMenuLink" "${APP_ID}"
+
+  stableLauncherShortcutsDone:
 !macroend

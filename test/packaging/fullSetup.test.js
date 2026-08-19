@@ -8,6 +8,8 @@ const projectRoot = path.resolve(__dirname, "../..");
 test("Full Offline Setup keeps Runtime outside the Client package", async () => {
   const packageJson = JSON.parse(await readFile(path.join(projectRoot, "package.json"), "utf8"));
   const installerScript = await readFile(path.join(projectRoot, "build", "installer.nsh"), "utf8");
+  const stableLauncherSource = await readFile(path.join(projectRoot, "build", "stable-launcher.nsi"), "utf8");
+  const stableLauncherBuilder = await readFile(path.join(projectRoot, "scripts", "buildStableLauncher.js"), "utf8");
   const runtimeArchiveBuilder = await readFile(path.join(projectRoot, "scripts", "buildRuntimeArchive.js"), "utf8");
   const customInit = installerScript.slice(
     installerScript.indexOf("!macro customInit"),
@@ -24,6 +26,9 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.equal(packageJson.build.nsis.include, "build/installer.nsh");
   assert.equal("extraResources" in packageJson.build, false);
   assert.equal(packageJson.scripts["prepare:runtime"], "node scripts/buildRuntimeArchive.js");
+  assert.equal(packageJson.scripts["build:launcher"], "node scripts/buildStableLauncher.js");
+  assert.equal(packageJson.scripts["test:launcher"], "node --test test/launcher/stableLauncher.test.js");
+  assert.match(packageJson.scripts["dist:win"], /^npm run build:launcher && npm run prepare:runtime && electron-builder/);
   assert.equal(packageJson.devDependencies["7zip-bin"], "5.2.0");
   assert.match(runtimeArchiveBuilder, /require\("7zip-bin"\)/);
   assert.match(runtimeArchiveBuilder, /getDirectorySize\(stagingDirectory\)/);
@@ -31,6 +36,11 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(runtimeArchiveBuilder, /RUNTIME_UNPACKED_SIZE/);
   assert.match(runtimeArchiveBuilder, /RUNTIME_ARCHIVE_SIZE/);
   assert.match(runtimeArchiveBuilder, /cp\(archiver, runtimeExtractor\)/);
+  assert.match(stableLauncherBuilder, /const nsisVersion = "3\.0\.4\.1"/);
+  assert.match(stableLauncherBuilder, /electron-builder-binaries\/releases\/download\/nsis-\$\{nsisVersion\}/);
+  assert.match(stableLauncherBuilder, /VKMiizYdmNdJOWpRGz4trl4lD\+\+BvYP2irAXpMilheUP0pc93iKlWAoP843Vlraj8YG19CVn0j\+dCo\/hURz9\+Q==/);
+  assert.doesNotMatch(stableLauncherBuilder, /AppData|LOCALAPPDATA|ELECTRON_BUILDER_NSIS_DIR|app-builder-lib/);
+  assert.match(stableLauncherSource, /StrCpy \$installationRoot "\$EXEDIR"/);
 
   assert.match(installerScript, /!include "\$\{BUILD_RESOURCES_DIR\}\\runtime-size\.nsh"/);
   assert.match(installerScript, /SectionGetSize 0 \$0/);
@@ -55,6 +65,11 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(customUninstall, /ReadRegStr \$0 HKCU "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation[\s\S]*StrCmp "\$0" "\$INSTDIR" 0 asrCustomUninstallLocationValidationFailure/);
   assert.match(customUninstall, /\$\{GetFileName\} "\$INSTDIR" \$1[\s\S]*StrCmp \$1 "\$\{VERSION\}" 0 asrCustomUninstallLocationValidationFailure/);
   assert.match(customUninstall, /\$\{StdUtils\.GetParentPath\} \$uninstallClientsDirectory "\$INSTDIR"[\s\S]*\$\{GetFileName\} "\$uninstallClientsDirectory" \$1[\s\S]*StrCmp \$1 "Clients" 0 asrCustomUninstallLocationValidationFailure[\s\S]*\$\{StdUtils\.GetParentPath\} \$uninstallAsrRootDirectory "\$uninstallClientsDirectory"/);
+  assert.match(customUninstall, /StrCpy \$uninstallManualRuntimeCleanupEligible "1"[\s\S]*Delete "\$uninstallAsrRootDirectory\\asr-launch\.exe"/);
+  assert.ok(
+    customUninstall.indexOf("Goto asrCustomUninstallDone") <
+      customUninstall.indexOf('Delete "$uninstallAsrRootDirectory\\asr-launch.exe"'),
+  );
   assert.match(customUninstall, /SetOutPath "\$PLUGINSDIR"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime\.staging"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime\.previous"/);
   assert.match(installerScript, /IfFileExists "\$uninstallAsrRootDirectory\\Runtime\\NUL" asrCustomUninstallRuntimeRemaining/);
   assert.match(installerScript, /The ASR Runtime could not be completely removed\.[\s\S]*ASR root: \$uninstallAsrRootDirectory[\s\S]*Remaining path: \$uninstallRuntimeRemainingPath/);
@@ -100,6 +115,13 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /Rename "\$runtimeDirectory" "\$runtimeBackupDirectory"/);
   assert.match(installerScript, /Rename "\$runtimeStagingDirectory" "\$runtimeDirectory"/);
   assert.doesNotMatch(installerScript, /RMDir \/r "\$INSTDIR\\\.\.\\Runtime"/);
+  assert.match(
+    installerScript,
+    /runtimeInstalled:[\s\S]*SetOutPath "\$asrRootDirectory"[\s\S]*File \/oname=asr-launch\.exe "\$\{BUILD_RESOURCES_DIR\}\\stable-launcher\.exe"[\s\S]*StrCpy \$stableLauncherPath "\$asrRootDirectory\\asr-launch\.exe"/,
+  );
+  assert.match(installerScript, /CreateShortCut "\$newDesktopLink" "\$stableLauncherPath"/);
+  assert.match(installerScript, /CreateShortCut "\$newStartMenuLink" "\$stableLauncherPath"/);
+  assert.doesNotMatch(installerScript, /CreateShortCut "\$newDesktopLink" "\$INSTDIR\\\$\{APP_EXECUTABLE_FILENAME\}"/);
   assert.ok(
     installerScript.indexOf('nsExec::ExecToStack /OEM \'"$runtimeExtractorPath" x -y "-o$runtimeStagingDirectory" "$runtimeArchivePath"\'') <
       installerScript.indexOf('Rename "$runtimeDirectory" "$runtimeBackupDirectory"'),
