@@ -10,6 +10,9 @@ stub. Получение, verification, staging, activation и запуск по
 пока не реализованы.
 Фактические Full Setup, Runtime repair и uninstall описаны в
 [документе упаковки](../packaging/module.md).
+Наблюдаемое текущее поведение и статус его validation собраны в
+[behavioral validation matrix](validation.md); она не определяет архитектуру
+следующего milestone.
 
 В текущем Full Setup чистая Client installation размещается в
 `<ASR root>/Clients/<client version>`. Также реализован root-level stable launch

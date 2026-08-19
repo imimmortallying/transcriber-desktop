@@ -60,6 +60,14 @@
 - **Веди документацию как часть изменения.** Меняешь код — обнови
   соответствующий док в том же шаге. Изменение кода без обновления дока —
   незавершённое изменение. Именно рассинхрон дока с кодом убивает документацию.
+- **Синхронизируй behavioral validation evidence.** Если изменение вводит или
+  меняет наблюдаемое поведение, lifecycle/recovery-поведение либо failure mode,
+  до завершения работы обнови соответствующую behavioral validation matrix.
+  Отдельно укажи: architecture/defined behavior, automated coverage, manual
+  validation, contract defined but not validated и future/undefined behavior.
+  Не помечай сценарий как manually validated только потому, что есть реализация
+  или automated test. Матрица фиксирует evidence и coverage, а не становится
+  конкурирующим architecture source of truth.
 - Документируй только сложное, рискованное или неочевидное. Очевидный код не
   документируй. Не заводи доки заранее для каждого модуля — заводи, когда модуль
   реально стал сложным.

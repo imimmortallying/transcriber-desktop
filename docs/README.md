@@ -15,6 +15,9 @@
   поставки.
 - `client-update/module.md` — утверждённая архитектура жизненного цикла
   Client-only update без повторной доставки Runtime.
+- `client-update/validation.md` — матрица текущего наблюдаемого поведения Full
+  Setup / Client Update и его validation evidence; не является архитектурной
+  спецификацией.
 - `diarization/module.md` — сознательно отключённая диаризация и её границы.
 - `security/module.md` — сквозная security-модель: активы, угрозы, границы
   доверия, controls и их verification.
