@@ -3,16 +3,21 @@
 Этот документ — source of truth для утверждённой принципиальной архитектуры
 обновления Client без повторной доставки тяжёлого ASR Runtime. Он описывает
 целевую модель следующего milestone, а не реализованное поведение: Client
-updater, update source и соответствующая инфраструктура пока отсутствуют.
+updater, update source и соответствующая инфраструктура пока отсутствуют. Уже
+реализована только release/build граница: `npm run dist:client` создаёт один
+provider-neutral ZIP Client bundle без Runtime. Получение, verification, staging,
+activation и запуск этого artifact пока не реализованы.
 Фактические Full Setup, Runtime repair и uninstall описаны в
 [документе упаковки](../packaging/module.md).
 
 ## Граница milestone
 
-Client release создаётся независимо от Runtime. Один официальный release
-artifact Client должен подходить как минимум для двух способов доставки:
-online и offline с физического носителя. После получения artifact способ
-доставки не влияет на дальнейший lifecycle.
+Client release создаётся независимо от Runtime. Официальный artifact Client —
+`local-asr-prototype-client-<client-version>-win-x64.zip`: ZIP с одним unpacked
+Windows x64 Client bundle без Runtime, user/application data и provider-specific
+update metadata. Он подходит как минимум для двух способов доставки: online и
+offline с физического носителя. После получения artifact способ доставки не
+влияет на дальнейший lifecycle.
 
 Обычный Client update изменяет только Client и использует установленный Runtime
 лишь при соответствии явному compatibility contract. Он не переустанавливает,

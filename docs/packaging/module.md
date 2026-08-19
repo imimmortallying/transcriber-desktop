@@ -7,6 +7,23 @@ PowerShell; для скачивания и установки Python-завис�
 
 ## Что получится
 
+### Client release artifact
+
+`npm run dist:client` собирает provider-neutral Client-only artifact
+`dist/local-asr-prototype-client-<client-version>-win-x64.zip`. В ZIP на корне
+находится unpacked Windows x64 Client bundle: executable, `resources/app.asar`,
+Electron runtime files и locales. Runtime, Python, модели, ffmpeg Runtime
+payload, user/application data, Full Setup, NSIS helpers, blockmap, build
+metadata и `app-update.yml` в него не входят. Поэтому этот ZIP является одним
+release payload, который в будущем можно получить online или с физического
+носителя, проверить до extraction и подготовить в version-specific Client
+directory без повторной доставки Runtime.
+
+Текущая Full Setup installation layout от этого не меняется. Публикация,
+acquisition, authenticity verification, production `Clients/<release>` layout,
+launcher/update infrastructure, activation, rollback и READY ещё не
+реализованы.
+
 Перед сборкой Full Offline Setup исходный Runtime payload должен содержать:
 
 ```text
