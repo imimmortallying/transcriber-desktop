@@ -2,7 +2,9 @@
 
 `src/runtime/resolveRuntime.js` формализует ASR Runtime как единый компонент:
 embedded Python и зависимости, Python-пайплайн, ffmpeg, веса GigaAM и packaged
-runtime-конфигурацию. Он возвращает Client пути к Runtime и перед запуском
+runtime-конфигурацию. В packaged-режиме он получает явный `installationRoot`,
+выводит из него shared `<installationRoot>/Runtime`, возвращает Client пути к
+Runtime и перед запуском
 `src/recognition/runRecognition.js` проверяет manifest, идентичность,
 поддерживаемую API-версию и наличие ключевых ресурсов, включая фактический
 entrypoint `pipeline/asr_pipeline/cli.py`. Проверка не импортирует Python и не
@@ -12,6 +14,11 @@ entrypoint `pipeline/asr_pipeline/cli.py`. Проверка не импорти�
 `preprocess` и `asr` через этот Runtime. В dev-режиме используются исходные
 `pipeline/`, `pipeline/.venv` и `resources/`; в packaged-режиме Runtime находится
 в sibling-каталоге `<ASR root>/Runtime`, а Client — в `<ASR root>/Client`.
+Пока stable launch infrastructure нет,
+`src/runtime/resolveCurrentClientInstallationRoot.js` временно выводит
+`installationRoot` из текущего `<ASR root>/Client/resources` layout. Это
+единственное место, знающее эту временную геометрию; Runtime resolver от глубины
+Client-каталога не зависит и позже может получить context от stable infrastructure.
 `ASR_PYTHON` — явный development override с полным
 путём к интерпретатору. Packaged production Client его игнорирует и использует
 только Python из определённого приложением Runtime.
@@ -19,7 +26,7 @@ entrypoint `pipeline/asr_pipeline/cli.py`. Проверка не импорти�
 `runtime-manifest.json` — неизменяемая часть Runtime. В нём находятся только
 `manifestFormatVersion`, `runtimeId`, `runtimeVersion` и `runtimeApiVersion`;
 пользователь не создаёт и не редактирует этот файл. Runtime физически отделён от
-Client package; resolver выводит его путь из packaged Client layout, а не из
+Client package; resolver выводит его путь из `installationRoot`, а не из
 пользовательской настройки. Client можно заменить независимо от Runtime. Runtime
 пока устанавливает или восстанавливает только Full Offline Setup; Runtime auto-update
 и Client updater не реализованы.

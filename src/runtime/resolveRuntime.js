@@ -1,18 +1,21 @@
 const { readFile, stat } = require("node:fs/promises");
 const path = require("node:path");
+const { resolveCurrentClientInstallationRoot } = require("./resolveCurrentClientInstallationRoot");
 
 const RUNTIME_ID = "local-asr-runtime";
 const RUNTIME_API_VERSION = 1;
 
 function getRuntimePaths({
   isPackaged,
-  resourcesPath,
+  installationRoot,
   projectRoot = path.resolve(__dirname, "../.."),
   environment = process.env,
 }) {
-  const runtimeRoot = isPackaged
-    ? path.resolve(resourcesPath, "..", "..", "Runtime")
-    : projectRoot;
+  if (isPackaged && (typeof installationRoot !== "string" || !installationRoot.trim())) {
+    throw new Error("Packaged ASR Runtime requires an installation root.");
+  }
+
+  const runtimeRoot = isPackaged ? path.resolve(installationRoot, "Runtime") : projectRoot;
   const resourceRoot = isPackaged ? runtimeRoot : path.join(runtimeRoot, "resources");
   const pipelineDirectory = path.join(runtimeRoot, "pipeline");
 
@@ -31,9 +34,12 @@ function getRuntimePaths({
 
 function getCurrentRuntime() {
   const { app } = require("electron");
+  const isPackaged = app.isPackaged;
   return getRuntimePaths({
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
+    isPackaged,
+    installationRoot: isPackaged
+      ? resolveCurrentClientInstallationRoot(process.resourcesPath)
+      : undefined,
   });
 }
 

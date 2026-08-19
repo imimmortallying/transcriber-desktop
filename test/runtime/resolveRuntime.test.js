@@ -10,6 +10,7 @@ const {
   getRuntimePaths,
   validateRuntime,
 } = require("../../src/runtime/resolveRuntime");
+const { resolveCurrentClientInstallationRoot } = require("../../src/runtime/resolveCurrentClientInstallationRoot");
 
 async function writeRuntime(root, manifest = {}) {
   const runtimeRoot = path.join(root, "Runtime");
@@ -46,17 +47,38 @@ async function withRuntime(callback) {
 function packagedRuntime(root, environment = {}) {
   return getRuntimePaths({
     isPackaged: true,
-    resourcesPath: path.join(root, "Client", "resources"),
+    installationRoot: root,
     environment,
   });
 }
 
-test("accepts a compatible packaged runtime", async () => {
+test("derives the packaged runtime root from the installation root", async () => {
   await withRuntime(async (root) => {
     const runtime = await validateRuntime(packagedRuntime(root));
     assert.equal(runtime.manifest.runtimeVersion, "1.0.0");
     assert.equal(runtime.root, path.join(root, "Runtime"));
   });
+});
+
+test("temporarily derives the installation root from the current Client layout", async () => {
+  await withRuntime(async (root) => {
+    const installationRoot = resolveCurrentClientInstallationRoot(
+      path.join(root, "Client", "resources"),
+    );
+    const runtime = await validateRuntime(packagedRuntime(installationRoot));
+
+    assert.equal(installationRoot, root);
+    assert.equal(runtime.root, path.join(root, "Runtime"));
+  });
+});
+
+test("resolves a shared runtime independently of Client directory depth", () => {
+  const root = "C:\\ASR";
+  const versionedClientResources = path.join(root, "Clients", "0.1.0", "resources");
+  const runtime = packagedRuntime(root);
+
+  assert.equal(runtime.root, path.join(root, "Runtime"));
+  assert.notEqual(runtime.root, path.resolve(versionedClientResources, "..", "..", "Runtime"));
 });
 
 test("rejects an unexpected runtime identity", async () => {

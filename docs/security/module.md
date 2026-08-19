@@ -71,9 +71,14 @@ security audit и не утверждает наличие уязвимости 
   распознавания.
 - **Trust boundary:** Electron Client → локальный ASR Runtime.
 - **Control:** `src/runtime/resolveRuntime.js` определяет Runtime только из
-  application-controlled packaged/dev layout: packaged Client выводит sibling
-  `<ASR root>/Runtime` из `<ASR root>/Client`, а development использует исходный
-  layout. Перед запуском Python Client
+  application-controlled packaged/dev layout: в packaged-режиме он получает
+  `installationRoot` и выводит shared `<installationRoot>/Runtime`, а
+  development использует исходный layout. Пока stable launch infrastructure
+  отсутствует, `src/runtime/resolveCurrentClientInstallationRoot.js` временно
+  выводит `installationRoot` из текущего `<ASR root>/Client/resources` layout;
+  это единственное место, знающее его геометрию. Runtime resolver не зависит от
+  глубины Client-каталога и не получает путь Runtime от пользователя. Перед
+  запуском Python Client
   читает `runtime-manifest.json`, проверяет format, identity и API version, а
   также наличие Python, pipeline/config, фактического CLI entrypoint и ffmpeg.
   Имена и состав файлов модели остаются деталями реализации Runtime: Client их
@@ -83,8 +88,10 @@ security audit и не утверждает наличие уязвимости 
   сохраняет Runtime, тогда как обычный ручной uninstall пользователя намеренно
   удаляет Runtime как внутренний компонент приложения. В поддерживаемой
   per-user установке Runtime всё ещё доступен на запись владельцу учётной записи.
-- **Implementation:** `runtime-manifest.json`; `src/runtime/resolveRuntime.js`;
-  `src/recognition/runRecognition.js` вызывает preflight перед `spawn`.
+- **Implementation:** `runtime-manifest.json`;
+  `src/runtime/resolveCurrentClientInstallationRoot.js`;
+  `src/runtime/resolveRuntime.js`; `src/recognition/runRecognition.js` вызывает
+  preflight перед `spawn`.
 - **Verification:** `npm run test:runtime` проверяет совместимый Runtime,
   неверные identity/API, отсутствующий или некорректный manifest, отсутствующий
   ключевой ресурс и разделение production/development Python resolution.
