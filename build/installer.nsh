@@ -1,6 +1,7 @@
+!include FileFunc.nsh
+
 !ifndef BUILD_UNINSTALLER
   !include "${BUILD_RESOURCES_DIR}\runtime-size.nsh"
-  !include FileFunc.nsh
 
   Var legacyInstallLocation
   Var isExistingClientInstallation
@@ -22,6 +23,7 @@
 
 !ifdef BUILD_UNINSTALLER
   Var uninstallAsrRootDirectory
+  Var uninstallClientsDirectory
   Var uninstallManualRuntimeCleanupEligible
   Var uninstallRuntimeRemainingPath
 !endif
@@ -33,6 +35,7 @@
 !ifdef BUILD_UNINSTALLER
   !macro customUnInstall
     StrCpy $uninstallAsrRootDirectory ""
+    StrCpy $uninstallClientsDirectory ""
     StrCpy $uninstallManualRuntimeCleanupEligible "0"
     StrCpy $uninstallRuntimeRemainingPath ""
 
@@ -43,7 +46,15 @@
     ReadRegStr $0 HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
     StrCmp "$0" "$INSTDIR" 0 asrCustomUninstallLocationValidationFailure
 
-    ${StdUtils.GetParentPath} $uninstallAsrRootDirectory "$INSTDIR"
+    ${GetFileName} "$INSTDIR" $1
+    StrCmp $1 "${VERSION}" 0 asrCustomUninstallLocationValidationFailure
+
+    ${StdUtils.GetParentPath} $uninstallClientsDirectory "$INSTDIR"
+    StrCmp $uninstallClientsDirectory "" asrCustomUninstallLocationValidationFailure
+    ${GetFileName} "$uninstallClientsDirectory" $1
+    StrCmp $1 "Clients" 0 asrCustomUninstallLocationValidationFailure
+
+    ${StdUtils.GetParentPath} $uninstallAsrRootDirectory "$uninstallClientsDirectory"
     StrCmp $uninstallAsrRootDirectory "" asrCustomUninstallLocationValidationFailure
     StrCpy $uninstallManualRuntimeCleanupEligible "1"
 
@@ -83,8 +94,10 @@
 
   Function un.onUninstSuccess
     StrCmp $uninstallManualRuntimeCleanupEligible "1" 0 asrUninstallRootCleanupDone
+    StrCmp $uninstallClientsDirectory "" asrUninstallRootCleanupDone
     StrCmp $uninstallAsrRootDirectory "" asrUninstallRootCleanupDone
     SetOutPath "$PLUGINSDIR"
+    RMDir "$uninstallClientsDirectory"
     RMDir "$uninstallAsrRootDirectory"
 
     asrUninstallRootCleanupDone:
@@ -114,8 +127,12 @@
   IfFileExists "$legacyInstallLocation\resources\python\python.exe" blockLegacyLayout classifyRegisteredClientLayout
 
   classifyRegisteredClientLayout:
-    ${GetFileName} "$legacyInstallLocation" $0
-    StrCmp $0 "Client" 0 blockUnknownRegisteredLayout
+    ${StdUtils.GetParentPath} $0 "$legacyInstallLocation"
+    StrCmp $0 "" blockUnknownRegisteredLayout
+    ${GetFileName} "$0" $1
+    StrCmp $1 "Clients" 0 blockUnknownRegisteredLayout
+    ${GetFileName} "$legacyInstallLocation" $1
+    StrCmp $1 "" blockUnknownRegisteredLayout
     IfFileExists "$legacyInstallLocation\Uninstall ${PRODUCT_FILENAME}.exe" existingClientLayout blockUnknownRegisteredLayout
 
   blockLegacyLayout:
@@ -128,7 +145,8 @@
 
   existingClientLayout:
     StrCpy $isExistingClientInstallation "1"
-    ${GetParent} "$legacyInstallLocation" $asrRootDirectory
+    ${StdUtils.GetParentPath} $asrRootDirectory "$0"
+    StrCmp $asrRootDirectory "" blockUnknownRegisteredLayout
 
   done:
 !macroend
@@ -236,7 +254,7 @@
     StrCpy $asrRootDirectory "$INSTDIR"
 
     asrRootResolved:
-    StrCpy $INSTDIR "$asrRootDirectory\Client"
+    StrCpy $INSTDIR "$asrRootDirectory\Clients\${VERSION}"
   FunctionEnd
 !endif
 

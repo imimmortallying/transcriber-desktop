@@ -13,10 +13,11 @@ entrypoint `pipeline/asr_pipeline/cli.py`. Проверка не импорти�
 `src/recognition/runRecognition.js` запускает `asr_pipeline.cli` для
 `preprocess` и `asr` через этот Runtime. В dev-режиме используются исходные
 `pipeline/`, `pipeline/.venv` и `resources/`; в packaged-режиме Runtime находится
-в sibling-каталоге `<ASR root>/Runtime`, а Client — в `<ASR root>/Client`.
+в sibling-каталоге `<ASR root>/Runtime`, а Client — в
+`<ASR root>/Clients/<client version>`.
 Пока stable launch infrastructure нет,
 `src/runtime/resolveCurrentClientInstallationRoot.js` временно выводит
-`installationRoot` из текущего `<ASR root>/Client/resources` layout. Это
+`installationRoot` из текущего `<ASR root>/Clients/<client version>/resources` layout. Это
 единственное место, знающее эту временную геометрию; Runtime resolver от глубины
 Client-каталога не зависит и позже может получить context от stable infrastructure.
 `ASR_PYTHON` — явный development override с полным

@@ -10,6 +10,11 @@ activation и запуск этого artifact пока не реализова�
 Фактические Full Setup, Runtime repair и uninstall описаны в
 [документе упаковки](../packaging/module.md).
 
+В текущем Full Setup чистая Client installation уже размещается в
+`<ASR root>/Clients/<client version>`, но это не является реализацией Client
+update lifecycle: versioned directory пока принадлежит обычному Full Setup, а
+registration, direct shortcuts и uninstaller временно принадлежат текущему Client.
+
 ## Граница milestone
 
 Client release создаётся независимо от Runtime. Официальный artifact Client —

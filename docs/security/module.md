@@ -75,7 +75,8 @@ security audit и не утверждает наличие уязвимости 
   `installationRoot` и выводит shared `<installationRoot>/Runtime`, а
   development использует исходный layout. Пока stable launch infrastructure
   отсутствует, `src/runtime/resolveCurrentClientInstallationRoot.js` временно
-  выводит `installationRoot` из текущего `<ASR root>/Client/resources` layout;
+  выводит `installationRoot` из текущего
+  `<ASR root>/Clients/<client version>/resources` layout;
   это единственное место, знающее его геометрию. Runtime resolver не зависит от
   глубины Client-каталога и не получает путь Runtime от пользователя. Перед
   запуском Python Client

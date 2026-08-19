@@ -60,10 +60,10 @@ test("derives the packaged runtime root from the installation root", async () =>
   });
 });
 
-test("temporarily derives the installation root from the current Client layout", async () => {
+test("temporarily derives the installation root from the current versioned Client layout", async () => {
   await withRuntime(async (root) => {
     const installationRoot = resolveCurrentClientInstallationRoot(
-      path.join(root, "Client", "resources"),
+      path.join(root, "Clients", "0.1.0", "resources"),
     );
     const runtime = await validateRuntime(packagedRuntime(installationRoot));
 

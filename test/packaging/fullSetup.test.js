@@ -13,6 +13,10 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
     installerScript.indexOf("!macro customInit"),
     installerScript.indexOf("!macro customPageAfterChangeDir"),
   );
+  const customUninstall = installerScript.slice(
+    installerScript.indexOf("!macro customUnInstall"),
+    installerScript.indexOf("Function un.onUninstSuccess"),
+  );
 
   assert.equal(packageJson.build.nsis.oneClick, false);
   assert.equal(packageJson.build.nsis.allowToChangeInstallationDirectory, false);
@@ -32,10 +36,13 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /SectionGetSize 0 \$0/);
   assert.match(installerScript, /IntOp \$0 \$0 \+ \$\{RUNTIME_UNPACKED_SIZE\}/);
   assert.match(installerScript, /StrCpy \$isForceCurrentInstall "1"/);
+  assert.match(installerScript, /!include FileFunc\.nsh/);
   assert.match(installerScript, /legacy all-users ASR installation was found/);
   assert.match(installerScript, /\$legacyInstallLocation\\resources\\python\\python\.exe/);
   assert.match(customInit, /IfFileExists "\$legacyInstallLocation\\resources\\python\\python\.exe" blockLegacyLayout classifyRegisteredClientLayout/);
-  assert.match(customInit, /\$\{GetFileName\} "\$legacyInstallLocation" \$0[\s\S]*StrCmp \$0 "Client" 0 blockUnknownRegisteredLayout[\s\S]*IfFileExists "\$legacyInstallLocation\\Uninstall \$\{PRODUCT_FILENAME\}\.exe" existingClientLayout blockUnknownRegisteredLayout/);
+  assert.match(customInit, /\$\{StdUtils\.GetParentPath\} \$0 "\$legacyInstallLocation"[\s\S]*\$\{GetFileName\} "\$0" \$1[\s\S]*StrCmp \$1 "Clients" 0 blockUnknownRegisteredLayout[\s\S]*\$\{GetFileName\} "\$legacyInstallLocation" \$1[\s\S]*StrCmp \$1 "" blockUnknownRegisteredLayout[\s\S]*IfFileExists "\$legacyInstallLocation\\Uninstall \$\{PRODUCT_FILENAME\}\.exe" existingClientLayout blockUnknownRegisteredLayout/);
+  assert.match(customInit, /existingClientLayout:[\s\S]*\$\{StdUtils\.GetParentPath\} \$asrRootDirectory "\$0"[\s\S]*StrCmp \$asrRootDirectory "" blockUnknownRegisteredLayout/);
+  assert.doesNotMatch(customInit, /StrCmp \$0 "Client"/);
   assert.match(customInit, /Обнаружена предыдущая версия ASR в \$legacyInstallLocation/);
   assert.match(customInit, /Пользовательские данные и результаты при этом сохраняются\./);
   assert.match(customInit, /Обнаружена нераспознанная или неполная предыдущая установка ASR в \$legacyInstallLocation/);
@@ -44,21 +51,24 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.doesNotMatch(installerScript, /isLegacyMigration/);
   assert.match(installerScript, /Function cleanupFailedClientInstall[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*CopyFiles \/SILENT "\$runtimeCleanupUninstaller" "\$PLUGINSDIR\\runtime-failure-uninstaller\.exe"[\s\S]*ExecWait '"\$PLUGINSDIR\\runtime-failure-uninstaller\.exe" \/S \/KEEP_APP_DATA \/currentuser --updated _\?=\$INSTDIR' \$runtimeCleanupExitCode/);
   assert.match(installerScript, /Compensating Client cleanup failed:[\s\S]*runtimeCleanupStatus/);
-  assert.match(installerScript, /!macro customUnInstall[\s\S]*\$\{if\} \$\{isUpdated\}[\s\S]*Goto asrCustomUninstallDone/);
-  assert.match(installerScript, /ReadRegStr \$0 HKCU "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation[\s\S]*StrCmp "\$0" "\$INSTDIR" 0 asrCustomUninstallLocationValidationFailure/);
-  assert.match(installerScript, /\$\{StdUtils\.GetParentPath\} \$uninstallAsrRootDirectory "\$INSTDIR"[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime\.staging"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime\.previous"/);
+  assert.match(customUninstall, /\$\{if\} \$\{isUpdated\}[\s\S]*Goto asrCustomUninstallDone/);
+  assert.match(customUninstall, /ReadRegStr \$0 HKCU "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation[\s\S]*StrCmp "\$0" "\$INSTDIR" 0 asrCustomUninstallLocationValidationFailure/);
+  assert.match(customUninstall, /\$\{GetFileName\} "\$INSTDIR" \$1[\s\S]*StrCmp \$1 "\$\{VERSION\}" 0 asrCustomUninstallLocationValidationFailure/);
+  assert.match(customUninstall, /\$\{StdUtils\.GetParentPath\} \$uninstallClientsDirectory "\$INSTDIR"[\s\S]*\$\{GetFileName\} "\$uninstallClientsDirectory" \$1[\s\S]*StrCmp \$1 "Clients" 0 asrCustomUninstallLocationValidationFailure[\s\S]*\$\{StdUtils\.GetParentPath\} \$uninstallAsrRootDirectory "\$uninstallClientsDirectory"/);
+  assert.match(customUninstall, /SetOutPath "\$PLUGINSDIR"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime\.staging"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime\.previous"/);
   assert.match(installerScript, /IfFileExists "\$uninstallAsrRootDirectory\\Runtime\\NUL" asrCustomUninstallRuntimeRemaining/);
   assert.match(installerScript, /The ASR Runtime could not be completely removed\.[\s\S]*ASR root: \$uninstallAsrRootDirectory[\s\S]*Remaining path: \$uninstallRuntimeRemainingPath/);
-  assert.match(installerScript, /Function un\.onUninstSuccess[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*RMDir "\$uninstallAsrRootDirectory"/);
+  assert.match(installerScript, /Function un\.onUninstSuccess[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*RMDir "\$uninstallClientsDirectory"[\s\S]*RMDir "\$uninstallAsrRootDirectory"/);
   assert.doesNotMatch(installerScript, /RMDir \/r "\$uninstallAsrRootDirectory"(?!\\)/);
-  assert.match(installerScript, /\$\{GetParent\} "\$legacyInstallLocation" \$asrRootDirectory/);
+  assert.doesNotMatch(installerScript, /RMDir \/r "\$uninstallClientsDirectory"/);
   assert.doesNotMatch(installerScript, /WriteRegStr HKCU "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation/);
   assert.match(installerScript, /!insertmacro MUI_PAGE_DIRECTORY/);
   assert.match(installerScript, /!define MUI_PAGE_CUSTOMFUNCTION_PRE clientInstFilesPre/);
   assert.match(
     installerScript,
-    /Function clientInstFilesPre[\s\S]*StrCmp \$asrRootDirectory "" 0 asrRootResolved[\s\S]*StrCpy \$asrRootDirectory "\$INSTDIR"[\s\S]*StrCpy \$INSTDIR "\$asrRootDirectory\\Client"/,
+    /Function clientInstFilesPre[\s\S]*StrCmp \$asrRootDirectory "" 0 asrRootResolved[\s\S]*StrCpy \$asrRootDirectory "\$INSTDIR"[\s\S]*StrCpy \$INSTDIR "\$asrRootDirectory\\Clients\\\$\{VERSION\}"/,
   );
+  assert.doesNotMatch(installerScript, /StrCpy \$INSTDIR "\$asrRootDirectory\\Client"/);
   assert.match(installerScript, /File \/oname=runtime\.7z/);
   assert.match(installerScript, /File \/oname=runtime-7za\.exe/);
   assert.match(installerScript, /Call checkRuntimeArchiveSpace/);

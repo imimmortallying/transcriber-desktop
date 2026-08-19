@@ -19,10 +19,10 @@ release payload, который в будущем можно получить on
 носителя, проверить до extraction и подготовить в version-specific Client
 directory без повторной доставки Runtime.
 
-Текущая Full Setup installation layout от этого не меняется. Публикация,
-acquisition, authenticity verification, production `Clients/<release>` layout,
-launcher/update infrastructure, activation, rollback и READY ещё не
-реализованы.
+Full Setup уже создаёт чистый versioned layout `Clients/<client-version>` для
+своего Client. Публикация, acquisition, authenticity verification, staging
+Client artifact, launcher/update infrastructure, activation, rollback и READY
+ещё не реализованы.
 
 Перед сборкой Full Offline Setup исходный Runtime payload должен содержать:
 
@@ -42,9 +42,10 @@ Client и Runtime, но устанавливает их физически ра�
 
 ```text
 <ASR root>/
-  Client/                 # NSIS application install directory
-    local-asr-prototype.exe
-    resources/app.asar
+  Clients/
+    <client version>/     # NSIS application install directory
+      local-asr-prototype.exe
+      resources/app.asar
   Runtime/                # sibling; не входит в Client package
     runtime-manifest.json
     python/
@@ -54,12 +55,18 @@ Client и Runtime, но устанавливает их физически ра�
 ```
 
 Поддерживается только per-user установка. NSIS сохраняет собственную страницу
-выбора каталога и однозначно создаёт в выбранном root `Client` и `Runtime`; выбор
-per-machine не предлагается. Client является independently replaceable component: служебный
-uninstall с `--updated` удаляет только `Client`, а Runtime остаётся. Обычный ручной
-uninstall удаляет `Client` вместе с sibling `Runtime`, `Runtime.staging` и
-`Runtime.previous`; затем пытается удалить пустой ASR root без рекурсии. Runtime installer,
-Runtime auto-update и Client updater пока не реализованы.
+выбора каталога и однозначно создаёт в выбранном root `Clients/<client version>`
+и `Runtime`; выбор per-machine не предлагается. Client является independently
+replaceable component: служебный uninstall с `--updated` удаляет только текущий
+versioned Client, а Runtime остаётся. Обычный ручной uninstall удаляет этот Client
+вместе с sibling `Runtime`, `Runtime.staging` и `Runtime.previous`; затем пытается
+без рекурсии удалить пустые `Clients` и ASR root. Runtime installer, Runtime
+auto-update и Client updater пока не реализованы.
+
+Пока stable launch/update infrastructure отсутствует, Windows registration
+`InstallLocation`, uninstaller и direct shortcuts временно принадлежат текущему
+versioned Client. Это не выбирает будущий launcher или transport installation
+context: стабильная точка входа и её ownership остаются будущей архитектурной ролью.
 
 `Runtime.staging` и `Runtime.previous` ниже относятся только к реализованной
 доставке Runtime внутри Full Offline Setup. Они не задают будущий lifecycle
@@ -67,11 +74,13 @@ Client-only update: его side-by-side candidate, activation, READY и rollback
 зафиксированы отдельно в [Client Update Lifecycle](../client-update/module.md).
 
 Перед ручным sibling cleanup uninstaller сверяет `$INSTDIR` с current-user
-`InstallLocation`. При несовпадении Runtime не удаляется, а Client cleanup продолжается.
-Runtime cleanup является best-effort: при заблокированных файлах пользователь получает
-предупреждение с ASR root и оставшимся путём. Electron userData, settings, transcripts,
-default results и внешняя results directory не относятся к installation lifecycle и не
-удаляются ни ручным, ни служебным uninstall.
+`InstallLocation`, version leaf с `${VERSION}` и структурный сегмент `Clients`.
+Только затем он выводит ASR root; при несовпадении Runtime не удаляется, а Client
+cleanup продолжается. Runtime cleanup является best-effort: при заблокированных
+файлах пользователь получает предупреждение с ASR root и оставшимся путём.
+Electron userData, settings, transcripts, default results и внешняя results
+directory не относятся к installation lifecycle и не удаляются ни ручным, ни
+служебным uninstall.
 
 Размер Runtime для страницы выбора каталога не задан вручную: `npm run dist:win`
 измеряет unpacked payload и генерирует временный `build/runtime-size.nsh`. Setup
@@ -87,7 +96,7 @@ Runtime archive materialизуется в `$PLUGINSDIR\runtime.7z`, а bundled `
 сохраняется для диагностики. Поскольку Client files, shortcuts и registry уже
 созданы до Runtime deployment, Runtime failure запускает временную копию
 штатного нового Client uninstaller с сохранением Electron userData. Он удаляет
-только `Client` и его registration/shortcuts, не трогая sibling `Runtime`,
+только текущий versioned Client и его registration/shortcuts, не трогая sibling `Runtime`,
 `Runtime.staging` или `Runtime.previous`.
 
 Legacy per-user установка с тем же application identity не мигрируется
@@ -98,22 +107,25 @@ results при этом сохраняются. После ручного уда
 обычной clean install. Legacy all-users/per-machine установка также блокирует Setup
 и требует ручного удаления.
 
-Уже новая registered Client installation распознаётся по `<ASR root>\Client` и
-её штатному uninstaller, без проверки здоровья sibling Runtime: Full Setup может
-восстановить отсутствующий или повреждённый Runtime. Нераспознанный или неполный
-registered layout блокируется без автоматического удаления. При failed reinstall
-compensating cleanup сохраняет previous Runtime, но не восстанавливает previous
-Client: штатный upgrade flow уже заменил Client до Runtime deployment.
+Уже новая registered Client installation распознаётся только по
+`<ASR root>\Clients\<client version>` и её штатному uninstaller: Setup проверяет
+сегмент `Clients`, непустой version leaf и выводит root лишь после этой структурной
+проверки. Здоровье sibling Runtime не проверяется, поэтому Full Setup может
+восстановить отсутствующий или повреждённый Runtime. Промежуточный старый layout
+`<ASR root>\Client` не поддерживается и не мигрируется; нераспознанный или
+неполный registered layout блокируется без автоматического удаления. При failed
+reinstall compensating cleanup сохраняет previous Runtime, но не восстанавливает
+previous Client: штатный upgrade flow уже заменил Client до Runtime deployment.
 
 ## Lifecycle Full Setup и удаления
 
 | Сценарий | Client | Runtime и staging | Пользовательские данные |
 | --- | --- | --- | --- |
-| Clean install | Создаётся в `<root>/Client`. | Full Setup распаковывает Runtime в `Runtime.staging`, проверяет manifest и продвигает его в `<root>/Runtime`. | Не создаются и не удаляются установщиком. |
+| Clean install | Создаётся в `<root>/Clients/<client version>`. | Full Setup распаковывает Runtime в `Runtime.staging`, проверяет manifest и продвигает его в `<root>/Runtime`. | Не создаются и не удаляются установщиком. |
 | Full Setup reinstall | Заменяется штатным install flow. | Новый payload сначала проходит staging; существующий `Runtime` временно становится `Runtime.previous`, а после успешного promotion удаляется. | Сохраняются. |
 | Runtime deployment failure | Compensating cleanup удаляет новый Client, shortcuts и регистрацию штатным uninstaller. | Existing `Runtime`, `Runtime.previous` и диагностический `Runtime.staging` не удаляются. При reinstall previous Client автоматически не восстанавливается. | Сохраняются. |
-| Manual user uninstall | Штатно удаляется. | Best-effort удаляются sibling `Runtime`, `Runtime.staging` и `Runtime.previous`; пустой root удаляется только без рекурсии. | Сохраняются. |
-| Service uninstall | В служебной uninstall-фазе удаляет только Client. | Не затрагивает Runtime, staging и backup. | Сохраняются. |
+| Manual user uninstall | Штатно удаляется текущий versioned Client. | Best-effort удаляются sibling `Runtime`, `Runtime.staging` и `Runtime.previous`; затем пустые `Clients` и root удаляются только без рекурсии. | Сохраняются. |
+| Service uninstall | В служебной uninstall-фазе удаляет только текущий versioned Client. | Не затрагивает Runtime, staging и backup. | Сохраняются. |
 | Full Setup repair | Existing Client допускается без проверки здоровья Runtime. | Full Setup заново доставляет Runtime; это repair отсутствующего или повреждённого Runtime. | Сохраняются. |
 | Legacy monolith | Не изменяется автоматически. | Setup блокируется до ручного удаления legacy приложения; последующий Setup — clean install. | Сохраняются при удалении legacy приложения. |
 

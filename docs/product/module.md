@@ -38,7 +38,7 @@
 Текущая поставка — Full Offline Setup для Windows. Он устанавливает один
 пользовательский продукт, но физически разделяет independently replaceable
 Client, тяжёлый ASR Runtime и пользовательские данные. После установки layout
-имеет вид `<ASR root>/Client` и `<ASR root>/Runtime`; Runtime не входит в пакет
+имеет вид `<ASR root>/Clients/<client version>` и `<ASR root>/Runtime`; Runtime не входит в пакет
 Client. Полный lifecycle установки, repair и удаления описан в
 [документе упаковки](../packaging/module.md).
 
