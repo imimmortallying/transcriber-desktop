@@ -45,6 +45,22 @@ async function writeRawSlot(root, slotName, raw) {
   await fs.writeFile(path.join(stateDirectory, slotName), raw, "utf8");
 }
 
+function withReparseObject(fsPath) {
+  const expectedPath = path.resolve(fsPath);
+  return {
+    ...fs,
+    async lstat(candidatePath) {
+      const info = await fs.lstat(candidatePath);
+      if (path.resolve(candidatePath) !== expectedPath) {
+        return info;
+      }
+      const reparseInfo = Object.create(info);
+      reparseInfo.isSymbolicLink = () => true;
+      return reparseInfo;
+    },
+  };
+}
+
 test("schema v1 accepts only the exact steady-state fields", () => {
   const valid = stateForVersion("0.1.0", 1);
   assert.deepEqual(normalizeState(valid), valid);
@@ -120,6 +136,50 @@ test("one valid slot is selected when the other slot is missing", async () => {
     assert.equal(result.kind, "selected");
     assert.equal(result.selected.generation, 1);
     assert.equal(result.slots[1].kind, "missing");
+  });
+});
+
+test("missing state remains distinct from uninspectable reparse state", async () => {
+  await withInstallation(async (root) => {
+    const missingResult = await readInstallationState(root);
+    assert.equal(missingResult.kind, "no-valid-state");
+    assert.equal(missingResult.stateDirectoryExists, false);
+    assert.deepEqual(missingResult.slots.map((slot) => slot.kind), ["missing", "missing"]);
+
+    await writeSlot(root, SLOT_NAMES[0], stateForVersion("0.1.0", 1));
+    await writeSlot(root, SLOT_NAMES[1], stateForVersion("0.1.0", 1));
+    const slotPaths = SLOT_NAMES.map((slot) => path.join(root, STATE_DIRECTORY, slot));
+    const before = await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath, "utf8")));
+    const reparseFs = withReparseObject(path.join(root, STATE_DIRECTORY));
+
+    const reparseResult = await readInstallationState(root, { fsApi: reparseFs });
+    assert.equal(reparseResult.kind, "uninspectable");
+    assert.deepEqual(reparseResult.slots.map((slot) => slot.kind), ["uninspectable", "uninspectable"]);
+    await assert.rejects(
+      () => reconcileInstallationState(root, "0.1.0", { fsApi: reparseFs }),
+      (error) => error.code === "UNINSPECTABLE_STATE",
+    );
+    assert.deepEqual(await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath, "utf8"))), before);
+  });
+});
+
+test("reparse slot blocks selection even when the other slot is valid", async () => {
+  await withInstallation(async (root) => {
+    await writeSlot(root, SLOT_NAMES[0], stateForVersion("0.1.0", 1));
+    await writeSlot(root, SLOT_NAMES[1], stateForVersion("0.1.0", 1));
+    const slotPaths = SLOT_NAMES.map((slot) => path.join(root, STATE_DIRECTORY, slot));
+    const before = await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath, "utf8")));
+    const reparseFs = withReparseObject(slotPaths[0]);
+
+    const result = await readInstallationState(root, { fsApi: reparseFs });
+    assert.equal(result.kind, "uninspectable");
+    assert.equal(result.slots[0].kind, "uninspectable");
+    assert.equal(result.slots[1].kind, "valid");
+    await assert.rejects(
+      () => reconcileInstallationState(root, "0.1.0", { fsApi: reparseFs }),
+      (error) => error.code === "UNINSPECTABLE_STATE",
+    );
+    assert.deepEqual(await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath, "utf8"))), before);
   });
 });
 
@@ -309,34 +369,51 @@ test("failed redundancy write preserves the previously recoverable logical state
   });
 });
 
-test("selected Client must remain canonically contained and include the expected executable", async (t) => {
+test("selected Client distinguishes unavailable and unsafe paths", async () => {
   await withInstallation(async (root) => {
     await createClient(root);
     await assert.doesNotReject(assertSelectedClient(root, stateForVersion("0.1.0", 1)));
     await fs.rm(path.join(root, "Clients", "0.1.0", CLIENT_EXECUTABLE));
-    await assert.rejects(assertSelectedClient(root, stateForVersion("0.1.0", 1)), /missing or incomplete/);
+    await assert.rejects(
+      assertSelectedClient(root, stateForVersion("0.1.0", 1)),
+      (error) => error.code === "SELECTED_CLIENT_UNAVAILABLE",
+    );
 
-    await fs.mkdir(path.join(root, "Clients", "0.1.0", CLIENT_EXECUTABLE));
-    await assert.rejects(assertSelectedClient(root, stateForVersion("0.1.0", 1)), /unexpected filesystem type/);
-    await fs.rm(path.join(root, "Clients", "0.1.0", CLIENT_EXECUTABLE), { recursive: true, force: true });
+    await fs.rm(path.join(root, "Clients", "0.1.0"), { recursive: true, force: true });
+    await assert.rejects(
+      assertSelectedClient(root, stateForVersion("0.1.0", 1)),
+      (error) => error.code === "SELECTED_CLIENT_UNAVAILABLE",
+    );
 
     await createClient(root);
-    const outside = await fs.mkdtemp(path.join(os.tmpdir(), "asr-state-outside-"));
-    try {
-      await fs.writeFile(path.join(outside, CLIENT_EXECUTABLE), "outside", "utf8");
-      await fs.rm(path.join(root, "Clients", "0.1.0"), { recursive: true, force: true });
-      try {
-        await fs.symlink(outside, path.join(root, "Clients", "0.1.0"), "junction");
-      } catch (error) {
-        if (error.code === "EPERM") {
-          t.skip("creating a junction requires privileges in this environment");
-          return;
+    const executablePath = path.join(root, "Clients", "0.1.0", CLIENT_EXECUTABLE);
+    await fs.rm(executablePath);
+    await fs.mkdir(executablePath);
+    await assert.rejects(
+      assertSelectedClient(root, stateForVersion("0.1.0", 1)),
+      (error) => error.code === "UNSAFE_SELECTED_CLIENT",
+    );
+    await fs.rm(executablePath, { recursive: true, force: true });
+
+    await createClient(root);
+    await assert.rejects(
+      assertSelectedClient(root, stateForVersion("0.1.0", 1), { fsApi: withReparseObject(executablePath) }),
+      (error) => error.code === "UNSAFE_SELECTED_CLIENT",
+    );
+
+    const clientPath = path.join(root, "Clients", "0.1.0");
+    const escapingFs = {
+      ...fs,
+      async realpath(candidatePath) {
+        if (path.resolve(candidatePath) === path.resolve(clientPath)) {
+          return path.join(root, "outside-client");
         }
-        throw error;
-      }
-      await assert.rejects(assertSelectedClient(root, stateForVersion("0.1.0", 1)), /unexpected filesystem type|escapes/);
-    } finally {
-      await fs.rm(outside, { recursive: true, force: true });
-    }
+        return fs.realpath(candidatePath);
+      },
+    };
+    await assert.rejects(
+      assertSelectedClient(root, stateForVersion("0.1.0", 1), { fsApi: escapingFs }),
+      (error) => error.code === "UNSAFE_SELECTED_CLIENT",
+    );
   });
 });

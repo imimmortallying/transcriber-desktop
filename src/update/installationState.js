@@ -219,8 +219,8 @@ function parseJsonWithUniqueKeys(raw) {
 async function classifySlot(slotPath, { fsApi = fs } = {}) {
   let raw;
   try {
-    const slotInfo = await fsApi.stat(slotPath);
-    if (!slotInfo.isFile() || slotInfo.size > MAX_STATE_FILE_BYTES) {
+    const slotInfo = await fsApi.lstat(slotPath);
+    if (!slotInfo.isFile() || isReparsePoint(slotInfo) || slotInfo.size > MAX_STATE_FILE_BYTES) {
       return { kind: "uninspectable", path: slotPath };
     }
     raw = await fsApi.readFile(slotPath, "utf8");
@@ -262,8 +262,16 @@ async function readInstallationState(installationRoot, options = {}) {
   const { fsApi = fs } = options;
   let stateDirectoryExists = false;
   try {
-    await fsApi.lstat(stateDirectory);
+    const stateDirectoryInfo = await fsApi.lstat(stateDirectory);
     stateDirectoryExists = true;
+    if (!stateDirectoryInfo.isDirectory() || isReparsePoint(stateDirectoryInfo)) {
+      return {
+        kind: "uninspectable",
+        stateDirectory,
+        stateDirectoryExists,
+        slots: SLOT_NAMES.map((slotName) => ({ kind: "uninspectable", path: path.join(stateDirectory, slotName) })),
+      };
+    }
   } catch (error) {
     if (!error || error.code !== "ENOENT") {
       stateDirectoryExists = true;
@@ -308,6 +316,10 @@ function isReparsePoint(info) {
   return info.isSymbolicLink();
 }
 
+function isUnavailablePathError(error) {
+  return error && ["ENOENT", "ENOTDIR"].includes(error.code);
+}
+
 async function assertSelectedClient(installationRoot, state, { fsApi = fs } = {}) {
   const rootPath = path.resolve(installationRoot);
   const clientVersion = validateClientKey(state.activeClient.version);
@@ -324,7 +336,7 @@ async function assertSelectedClient(installationRoot, state, { fsApi = fs } = {}
     ]);
     if (!rootInfo.isDirectory() || !clientsInfo.isDirectory() || !clientInfo.isDirectory() || !executableInfo.isFile()
       || isReparsePoint(rootInfo) || isReparsePoint(clientsInfo) || isReparsePoint(clientInfo) || isReparsePoint(executableInfo)) {
-      fail("INVALID_SELECTED_CLIENT", "Installation state selected Client has an unexpected filesystem type.");
+      fail("UNSAFE_SELECTED_CLIENT", "Installation state selected Client has an unexpected filesystem type.");
     }
 
     const [realRoot, realClients, realClient, realExecutable] = await Promise.all([
@@ -338,13 +350,16 @@ async function assertSelectedClient(installationRoot, state, { fsApi = fs } = {}
       return relative && !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
     };
     if (!isContained(realRoot, realClients) || !isContained(realClients, realClient) || !isContained(realClient, realExecutable)) {
-      fail("INVALID_SELECTED_CLIENT", "Installation state selected Client escapes the installation root.");
+      fail("UNSAFE_SELECTED_CLIENT", "Installation state selected Client escapes the installation root.");
     }
   } catch (error) {
     if (error instanceof InstallationStateError) {
       throw error;
     }
-    fail("INVALID_SELECTED_CLIENT", "Installation state selected Client is missing or incomplete.");
+    if (isUnavailablePathError(error)) {
+      fail("SELECTED_CLIENT_UNAVAILABLE", "Installation state selected Client is missing or incomplete.");
+    }
+    fail("UNSAFE_SELECTED_CLIENT", "Installation state selected Client cannot be safely inspected.");
   }
 
   return { version: clientVersion, clientPath, executablePath };
