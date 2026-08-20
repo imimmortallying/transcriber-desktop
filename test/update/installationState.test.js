@@ -7,13 +7,16 @@ const {
   CLIENT_EXECUTABLE,
   InstallationStateError,
   MAX_STATE_FILE_BYTES,
+  SCHEMA_VERSION_V2,
   SLOT_NAMES,
   STATE_DIRECTORY,
   assertSelectedClient,
   normalizeState,
+  normalizeStateV2,
   publishInitialState,
   readInstallationState,
   reconcileInstallationState,
+  sameLogicalState,
   stateForVersion,
   validateClientKey,
 } = require("../../src/update/installationState");
@@ -61,6 +64,40 @@ function withReparseObject(fsPath) {
   };
 }
 
+function stateV2({
+  generation = 1,
+  activeVersion = "0.1.0",
+  knownGoodVersion = "0.1.0",
+  updateTransaction = null,
+} = {}) {
+  return {
+    schemaVersion: SCHEMA_VERSION_V2,
+    generation,
+    activeClient: { version: activeVersion },
+    knownGoodClient: { version: knownGoodVersion },
+    updateTransaction,
+  };
+}
+
+function preparedStateV2() {
+  return stateV2({
+    updateTransaction: {
+      phase: "prepared",
+      candidateClient: { version: "0.2.0" },
+    },
+  });
+}
+
+function activatedStateV2() {
+  return stateV2({
+    activeVersion: "0.2.0",
+    updateTransaction: {
+      phase: "activated",
+      candidateClient: { version: "0.2.0" },
+    },
+  });
+}
+
 test("schema v1 accepts only the exact steady-state fields", () => {
   const valid = stateForVersion("0.1.0", 1);
   assert.deepEqual(normalizeState(valid), valid);
@@ -74,6 +111,62 @@ test("schema v1 accepts only the exact steady-state fields", () => {
     () => normalizeState({ ...valid, activeClient: { version: "0.2.0" } }),
     /must match/,
   );
+});
+
+test("schema v2 accepts exact steady, prepared, and activated states", () => {
+  const steady = stateV2();
+  const prepared = preparedStateV2();
+  const activated = activatedStateV2();
+
+  assert.deepEqual(normalizeStateV2(steady), steady);
+  assert.deepEqual(normalizeStateV2(prepared), prepared);
+  assert.deepEqual(normalizeStateV2(activated), activated);
+});
+
+test("schema v2 rejects invalid transaction combinations and fields", () => {
+  const invalidStates = [
+    stateV2({ activeVersion: "0.2.0" }),
+    stateV2({ updateTransaction: { phase: "prepared", candidateClient: { version: "0.1.0" } } }),
+    stateV2({ activeVersion: "0.2.0", updateTransaction: { phase: "prepared", candidateClient: { version: "0.3.0" } } }),
+    stateV2({ updateTransaction: { phase: "activated", candidateClient: { version: "0.2.0" } } }),
+    stateV2({ activeVersion: "0.2.0", knownGoodVersion: "0.2.0", updateTransaction: { phase: "activated", candidateClient: { version: "0.2.0" } } }),
+    stateV2({ updateTransaction: { phase: "awaiting-ready", candidateClient: { version: "0.2.0" } } }),
+    stateV2({ updateTransaction: { phase: "prepared" } }),
+    { ...stateV2(), unexpected: true },
+    stateV2({ updateTransaction: { phase: "prepared", candidateClient: { version: "0.2.0" }, unexpected: true } }),
+    stateV2({ updateTransaction: { phase: "prepared", candidateClient: { version: "../outside" } } }),
+  ];
+
+  for (const invalidState of invalidStates) {
+    assert.throws(() => normalizeStateV2(invalidState), InstallationStateError);
+  }
+});
+
+test("schema v2 semantic comparison includes transaction phase and candidate", () => {
+  const prepared = normalizeStateV2(preparedStateV2());
+  const activated = normalizeStateV2(activatedStateV2());
+  const differentCandidate = normalizeStateV2(stateV2({
+    updateTransaction: {
+      phase: "prepared",
+      candidateClient: { version: "0.3.0" },
+    },
+  }));
+
+  assert.equal(sameLogicalState(prepared, normalizeStateV2(preparedStateV2())), true);
+  assert.equal(sameLogicalState(prepared, activated), false);
+  assert.equal(sameLogicalState(prepared, differentCandidate), false);
+});
+
+test("current v1 slot reader leaves a valid v2 document unsupported and writers v1", async () => {
+  await withInstallation(async (root) => {
+    await writeSlot(root, SLOT_NAMES[0], stateForVersion("0.1.0", 1));
+    await writeSlot(root, SLOT_NAMES[1], preparedStateV2());
+
+    const result = await readInstallationState(root);
+    assert.equal(result.kind, "unsupported");
+    assert.equal(result.slots[1].kind, "unsupported");
+    assert.equal(stateForVersion("0.1.0", 1).schemaVersion, 1);
+  });
 });
 
 test("Client keys reject traversal, separators, and arbitrary paths", () => {
@@ -237,7 +330,7 @@ test("newer schema with additional fields remains unsupported rather than corrup
   });
 });
 
-test("unsupported state is never rewritten by reconciliation", async () => {
+test("declared-v2 invalid state remains unsupported and is never rewritten by v1 reconciliation", async () => {
   await withInstallation(async (root) => {
     await createClient(root);
     await writeSlot(root, SLOT_NAMES[0], stateForVersion("0.1.0", 1));
@@ -246,9 +339,16 @@ test("unsupported state is never rewritten by reconciliation", async () => {
       generation: 2,
       activeClient: { version: "0.2.0" },
       knownGoodClient: { version: "0.2.0" },
+      updateTransaction: {
+        phase: "prepared",
+        candidateClient: { version: "0.2.0" },
+      },
     });
     const slotPaths = SLOT_NAMES.map((slot) => path.join(root, STATE_DIRECTORY, slot));
     const before = await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath, "utf8")));
+    const readResult = await readInstallationState(root);
+    assert.equal(readResult.kind, "unsupported");
+    assert.equal(readResult.slots[1].kind, "unsupported");
 
     await assert.rejects(
       () => reconcileInstallationState(root, "0.1.0", { mode: "provision" }),

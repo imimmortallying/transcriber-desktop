@@ -5,6 +5,7 @@ const { randomUUID } = require("node:crypto");
 const CLIENT_EXECUTABLE = "local-asr-prototype.exe";
 const MAX_STATE_FILE_BYTES = 64 * 1024;
 const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION_V2 = 2;
 const STATE_DIRECTORY = "InstallationState";
 const SLOT_NAMES = ["slot-a.json", "slot-b.json"];
 const BOOTSTRAP_DIRECTORY_PREFIX = "InstallationState.bootstrap-";
@@ -87,11 +88,86 @@ function normalizeState(value) {
   };
 }
 
+function normalizeStateV2(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !hasOnlyKeys(value, [
+    "schemaVersion",
+    "generation",
+    "activeClient",
+    "knownGoodClient",
+    "updateTransaction",
+  ])) {
+    fail("INVALID_STATE", "Installation state must contain exactly the schema v2 fields.");
+  }
+  if (value.schemaVersion !== SCHEMA_VERSION_V2) {
+    if (Number.isSafeInteger(value.schemaVersion) && value.schemaVersion > 0) {
+      fail("UNSUPPORTED_SCHEMA", "Installation state schema is unsupported.");
+    }
+    fail("INVALID_STATE", "Installation state schema version is invalid.");
+  }
+  if (!Number.isSafeInteger(value.generation) || value.generation < 1) {
+    fail("INVALID_STATE", "Installation state generation is invalid.");
+  }
+
+  const activeClient = validateClientReference(value.activeClient, "activeClient");
+  const knownGoodClient = validateClientReference(value.knownGoodClient, "knownGoodClient");
+  if (value.updateTransaction === null) {
+    if (activeClient.version !== knownGoodClient.version) {
+      fail("INVALID_STATE", "Schema v2 steady active and known-good Clients must match.");
+    }
+    return {
+      schemaVersion: SCHEMA_VERSION_V2,
+      generation: value.generation,
+      activeClient,
+      knownGoodClient,
+      updateTransaction: null,
+    };
+  }
+  if (!value.updateTransaction || typeof value.updateTransaction !== "object" || Array.isArray(value.updateTransaction)
+    || !hasOnlyKeys(value.updateTransaction, ["phase", "candidateClient"])) {
+    fail("INVALID_STATE", "Installation state schema v2 update transaction is invalid.");
+  }
+
+  const { phase } = value.updateTransaction;
+  const candidateClient = validateClientReference(value.updateTransaction.candidateClient, "update transaction candidateClient");
+  if (phase === "prepared") {
+    if (activeClient.version !== knownGoodClient.version || candidateClient.version === knownGoodClient.version) {
+      fail("INVALID_STATE", "Schema v2 prepared transaction Clients are inconsistent.");
+    }
+  } else if (phase === "activated") {
+    if (activeClient.version !== candidateClient.version || knownGoodClient.version === candidateClient.version) {
+      fail("INVALID_STATE", "Schema v2 activated transaction Clients are inconsistent.");
+    }
+  } else {
+    fail("INVALID_STATE", "Installation state schema v2 update transaction phase is invalid.");
+  }
+
+  return {
+    schemaVersion: SCHEMA_VERSION_V2,
+    generation: value.generation,
+    activeClient,
+    knownGoodClient,
+    updateTransaction: { phase, candidateClient },
+  };
+}
+
 function sameLogicalState(left, right) {
-  return left.schemaVersion === right.schemaVersion
-    && left.generation === right.generation
-    && left.activeClient.version === right.activeClient.version
-    && left.knownGoodClient.version === right.knownGoodClient.version;
+  if (!left || !right || left.schemaVersion !== right.schemaVersion
+    || left.generation !== right.generation
+    || left.activeClient.version !== right.activeClient.version
+    || left.knownGoodClient.version !== right.knownGoodClient.version) {
+    return false;
+  }
+  if (left.schemaVersion === SCHEMA_VERSION) {
+    return true;
+  }
+  if (left.schemaVersion !== SCHEMA_VERSION_V2) {
+    return false;
+  }
+  if (left.updateTransaction === null || right.updateTransaction === null) {
+    return left.updateTransaction === null && right.updateTransaction === null;
+  }
+  return left.updateTransaction.phase === right.updateTransaction.phase
+    && left.updateTransaction.candidateClient.version === right.updateTransaction.candidateClient.version;
 }
 
 function parseJsonWithUniqueKeys(raw) {
@@ -527,12 +603,14 @@ module.exports = {
   INVALID_DIRECTORY_PREFIX,
   MAX_STATE_FILE_BYTES,
   SCHEMA_VERSION,
+  SCHEMA_VERSION_V2,
   SLOT_NAMES,
   STATE_DIRECTORY,
   assertSelectedClient,
   classifySlot,
   derivePackagedInstallation,
   normalizeState,
+  normalizeStateV2,
   parseJsonWithUniqueKeys,
   publishInitialState,
   readInstallationState,

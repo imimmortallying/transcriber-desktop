@@ -159,6 +159,34 @@ slot и structurally ambiguous JSON (включая duplicate keys) имеют �
 valid v1 и приводят к read-only abort: старый Full Setup не удаляет и не
 перезаписывает такие state files.
 
+### InstallationState schema v2 reader foundation
+
+Schema v2 introduces the future transaction shape without enabling any production
+writer:
+
+```json
+{
+  "schemaVersion": 2,
+  "generation": 1,
+  "activeClient": { "version": "0.1.0" },
+  "knownGoodClient": { "version": "0.1.0" },
+  "updateTransaction": null
+}
+```
+
+`updateTransaction` is either `null`, or an exact object with `phase`
+(`prepared` or `activated`) and `candidateClient` using the same bounded
+`{ "version" }` Client identity. Steady state has matching active and
+known-good Clients. A prepared transaction keeps active equal to known-good and
+uses a different candidate; an activated transaction makes active equal to the
+candidate while retaining a different known-good Client.
+
+This slice adds only strict v2 normalization and semantic comparison. Existing
+slot readers, Coordinator and Full Setup continue to treat v2 as unsupported;
+bootstrap, provision and reconcile still write v1 only. No migration, prepare,
+activation, READY, commit or rollback behavior is implemented. Reader
+compatibility must be deployed before a future writer may publish v2.
+
 ## Failure, rollback и recovery
 
 | Момент отказа | Обязательный результат |

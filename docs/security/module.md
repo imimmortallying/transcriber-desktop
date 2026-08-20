@@ -110,8 +110,8 @@ security audit и не утверждает наличие уязвимости 
   Client path.
 - **Trust boundary:** per-user installation filesystem → root launcher bootstrap
   → fixed Coordinator → InstallationState protocol → selected Client executable.
-  Full Setup remains a temporary provisioning authority but does not yet deploy
-  Coordinator, so this remains an intentional temporary integration gap.
+  Full Setup remains a temporary provisioning authority and deploys the
+  root-owned Coordinator before launcher and state provisioning.
 - **Control:** `InstallationState` contains only two bounded JSON snapshots.
   Schema v1 accepts exact typed fields, a positive generation and equal
   active/known-good single-segment Client keys. It derives Client paths only as
