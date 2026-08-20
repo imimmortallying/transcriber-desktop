@@ -22,5 +22,6 @@ build/runtime-7za.exe
 build/runtime-size.nsh
 build/runtime-staging/
 build/stable-launcher.exe
+build/coordinator/
 build/tool-cache/
 build/launcher-test-*/

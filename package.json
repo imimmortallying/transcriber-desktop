@@ -6,9 +6,11 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/runtime/resolveCurrentClientInstallationRoot.js && node --check src/runtime/resolveRuntime.js && node --check src/update/installationState.js && node --check src/recognition/runRecognition.js && node --check src/renderer/renderer.js && node --check scripts/buildRuntimeArchive.js && node --check scripts/buildClientArtifact.js && node --check scripts/buildStableLauncher.js",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/runtime/resolveCurrentClientInstallationRoot.js && node --check src/runtime/resolveRuntime.js && node --check src/update/installationState.js && node --check src/coordinator/main.js && node --check src/recognition/runRecognition.js && node --check src/renderer/renderer.js && node --check scripts/buildRuntimeArchive.js && node --check scripts/buildClientArtifact.js && node --check scripts/buildStableLauncher.js && node --check scripts/buildCoordinator.js",
     "build:launcher": "node scripts/buildStableLauncher.js",
+    "build:coordinator": "node scripts/buildCoordinator.js",
     "test:launcher": "node --test test/launcher/stableLauncher.test.js",
+    "test:coordinator-sea": "npm run build:coordinator && node --test test/coordinator/seaArtifact.test.js",
     "test:runtime": "node --test test/runtime/resolveRuntime.test.js",
     "test:update-state": "node --test test/update/installationState.test.js",
     "test:packaging": "node --test test/packaging/fullSetup.test.js",
@@ -43,8 +45,10 @@
   },
   "devDependencies": {
     "@electron/asar": "3.2.18",
+    "7zip-bin": "5.2.0",
     "electron": "^41.7.1",
     "electron-builder": "26.0.12",
-    "7zip-bin": "5.2.0"
+    "esbuild": "0.28.2",
+    "postject": "1.0.0-alpha.6"
   }
 }

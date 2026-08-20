@@ -195,13 +195,16 @@ tampering; artifact authenticity/integrity verification remains future work.
 ### Windows-дистрибутив и supply chain
 
 - **Asset:** исполняемый код, Python runtime, ffmpeg, модели и сторонние npm/
-  Python-зависимости, входящие в дистрибутив, и compiler, создающий stable
-  launcher.
+  Python-зависимости, входящие в дистрибутив, compiler, создающий stable
+  launcher, и build inputs для standalone coordinator SEA executable.
 - **Threat:** подмена, уязвимая или непреднамеренно изменённая зависимость либо
-  ресурс сборки, включая compiler archive для stable launcher.
+  ресурс сборки, включая compiler archive для stable launcher и Node host для
+  coordinator SEA build.
 - **Trust boundary:** внешние источники зависимостей и ресурсов → среда сборки
-  → stable launcher и Windows-дистрибутив. Получение NSIS compiler — build-time
-  supply-chain boundary, отдельная от будущей verification Client update artifact.
+  → stable launcher, coordinator SEA executable и Windows-дистрибутив.
+  Получение NSIS compiler и pinned Node host для coordinator — build-time
+  supply-chain boundaries, отдельные от будущей verification Client update
+  artifact. Node host не загружается на машинах пользователей во время runtime.
 - **Control:** Node-зависимости зафиксированы `package-lock.json`; Python
   runtime-зависимости закреплены в `pipeline/requirements-app.txt`, а GigaAM
   указан commit Git-репозитория. Документ сборки задаёт источники ffmpeg,
@@ -216,18 +219,39 @@ tampering; artifact authenticity/integrity verification remains future work.
   cryptographic trust для установленных Client releases; их future verification
   остаётся частью Client Update Lifecycle. Изменение compiler origin, version,
   checksum или acquisition mechanism security-relevant и требует обновления
-  этого документа.
+  этого документа. `scripts/buildCoordinator.js` получает только pinned
+  Windows x64 Node `v24.16.0` по fixed official `nodejs.org` release URL,
+  сверяет repository-defined SHA-256 перед использованием cached `node.exe`;
+  downloaded host публикуется в cache только после успешной проверки. Hash
+  mismatch aborts build; downloaded host не исполняется до успешной проверки,
+  а redirects и alternate origins не принимаются. `esbuild` `0.28.2` и
+  `postject` `1.0.0-alpha.6` — direct locked
+  dev dependencies, а не transitive build inputs: первый bundle-ит coordinator
+  JS, второй inject-ит SEA blob в verified Node host. Их package-lock integrity
+  участвует в integrity зависимостей, но не равнозначна publisher/code-signing
+  trust. Текущая build chain: source JS → locked esbuild bundle → SEA blob,
+  generated using pinned verified Node host → locked postject injection →
+  `asr-coordinator.exe`. Этот generated coordinator ещё не входит в Full Setup
+  или production launch. Slice 6A не вводит Authenticode signing: coordinator
+  unsigned; verification Node build input не даёт local tamper resistance после
+  установки, а per-user writable installation tampering остаётся отдельной
+  future concern.
 - **Implementation:** `package-lock.json`, `pipeline/requirements-app.txt`,
   `build/installer.nsh`, `build/stable-launcher.nsi`,
-  `scripts/buildStableLauncher.js` и
+  `scripts/buildStableLauncher.js`, `scripts/buildCoordinator.js` и
   [документ упаковки](../packaging/module.md).
 - **Verification:** автоматического vulnerability scanning, SBOM, проверки
   происхождения или подписи артефакта в проекте не зафиксировано; ручная
   проверка — действия по сборке и проверка на чистой offline VM из документа
   упаковки. `npm run build:launcher` проверяет SHA-512 до compiler use, а
   `npm run test:packaging` фиксирует pinned version, origin, checksum и отказ от
-  machine-specific cache/private electron-builder internals. Выбор дополнительных
-  supply-chain controls остаётся открытым.
+  machine-specific cache/private electron-builder internals. `npm run
+  build:coordinator` verifies Node SHA-256 before host use; `npm run
+  test:coordinator-sea` builds and directly runs `asr-coordinator.exe` with Node
+  unavailable from its PATH. Автоматического vulnerability scanning, SBOM,
+  publisher/code-signing trust или проверки local post-install tamper resistance
+  для coordinator не зафиксировано. Выбор дополнительных supply-chain controls
+  остаётся открытым.
 
 ## Будущие сетевые компоненты
 

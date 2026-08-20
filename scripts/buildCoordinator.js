@@ -1,0 +1,156 @@
+const { createHash } = require("node:crypto");
+const { createReadStream, createWriteStream } = require("node:fs");
+const { copyFile, mkdir, readFile, rename, rm, stat, writeFile } = require("node:fs/promises");
+const https = require("node:https");
+const path = require("node:path");
+const { spawn } = require("node:child_process");
+const { pipeline } = require("node:stream/promises");
+const { build } = require("esbuild");
+const { inject } = require("postject");
+
+const projectRoot = path.resolve(__dirname, "..");
+const buildDirectory = path.join(projectRoot, "build");
+const coordinatorDirectory = path.join(buildDirectory, "coordinator");
+const stagingDirectory = path.join(coordinatorDirectory, "staging");
+const coordinatorEntryPoint = path.join(projectRoot, "src", "coordinator", "main.js");
+const bundledEntryPoint = path.join(stagingDirectory, "coordinator.cjs");
+const seaConfigPath = path.join(stagingDirectory, "sea-config.json");
+const seaBlobPath = path.join(stagingDirectory, "coordinator.blob");
+const coordinatorOutput = path.join(coordinatorDirectory, "asr-coordinator.exe");
+const stagedCoordinatorOutput = path.join(stagingDirectory, "asr-coordinator.exe");
+const nodeVersion = "v24.16.0";
+const nodeArchiveUrl = `https://nodejs.org/download/release/${nodeVersion}/win-x64/node.exe`;
+const nodeExecutableSha256 = "b3094d0b49f9ad602262a9921551737bb97637c05dd357a06ae98188d7290aa3";
+const nodeToolDirectory = path.join(buildDirectory, "tool-cache", `node-${nodeVersion}-win-x64`);
+const nodeExecutable = path.join(nodeToolDirectory, "node.exe");
+const seaFuse = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
+
+async function sha256(filePath) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(filePath)) {
+    hash.update(chunk);
+  }
+  return hash.digest("hex");
+}
+
+function download(url, destination) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, (response) => {
+      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        response.resume();
+        reject(new Error("Pinned Node host download unexpectedly redirected."));
+        return;
+      }
+      if (response.statusCode !== 200) {
+        response.resume();
+        reject(new Error(`Unable to download pinned Node host: HTTP ${response.statusCode}.`));
+        return;
+      }
+      pipeline(response, createWriteStream(destination)).then(resolve, reject);
+    });
+    request.once("error", reject);
+  });
+}
+
+async function hasVerifiedNodeHost() {
+  try {
+    return await sha256(nodeExecutable) === nodeExecutableSha256;
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function ensureNodeHost() {
+  await mkdir(nodeToolDirectory, { recursive: true });
+  if (await hasVerifiedNodeHost()) {
+    return nodeExecutable;
+  }
+
+  const temporaryPath = `${nodeExecutable}.download`;
+  await rm(nodeExecutable, { force: true });
+  await rm(temporaryPath, { force: true });
+  await download(nodeArchiveUrl, temporaryPath);
+  if (await sha256(temporaryPath) !== nodeExecutableSha256) {
+    await rm(temporaryPath, { force: true });
+    throw new Error("Pinned Node host failed SHA-256 verification.");
+  }
+  await rename(temporaryPath, nodeExecutable);
+  return nodeExecutable;
+}
+
+function run(command, argumentsList, options = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, argumentsList, { stdio: "inherit", ...options });
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`${path.basename(command)} exited with code ${code}.`));
+    });
+  });
+}
+
+async function buildCoordinator() {
+  const nodeHost = await ensureNodeHost();
+  await rm(coordinatorOutput, { force: true });
+  await rm(stagingDirectory, { recursive: true, force: true });
+  await mkdir(stagingDirectory, { recursive: true });
+
+  try {
+    await build({
+      entryPoints: [coordinatorEntryPoint],
+      outfile: bundledEntryPoint,
+      bundle: true,
+      format: "cjs",
+      platform: "node",
+      target: "node24",
+      logLevel: "silent",
+    });
+    await writeFile(
+      seaConfigPath,
+      `${JSON.stringify({
+        main: bundledEntryPoint,
+        output: seaBlobPath,
+        mainFormat: "commonjs",
+        disableExperimentalSEAWarning: true,
+        useSnapshot: false,
+        useCodeCache: false,
+        execArgvExtension: "none",
+      }, null, 2)}\n`,
+      "utf8",
+    );
+    await run(nodeHost, ["--experimental-sea-config", seaConfigPath]);
+    await copyFile(nodeHost, stagedCoordinatorOutput);
+    await inject(stagedCoordinatorOutput, "NODE_SEA_BLOB", await readFile(seaBlobPath), {
+      sentinelFuse: seaFuse,
+    });
+    const outputInfo = await stat(stagedCoordinatorOutput);
+    if (!outputInfo.isFile() || outputInfo.size === 0) {
+      throw new Error("Coordinator SEA build did not produce an executable.");
+    }
+    await rename(stagedCoordinatorOutput, coordinatorOutput);
+    return coordinatorOutput;
+  } finally {
+    await rm(stagingDirectory, { recursive: true, force: true });
+  }
+}
+
+if (require.main === module) {
+  buildCoordinator().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  buildCoordinator,
+  coordinatorOutput,
+  nodeArchiveUrl,
+  nodeExecutableSha256,
+  nodeVersion,
+};
