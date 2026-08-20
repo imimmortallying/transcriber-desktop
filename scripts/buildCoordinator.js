@@ -24,6 +24,67 @@ const nodeExecutableSha256 = "b3094d0b49f9ad602262a9921551737bb97637c05dd357a06a
 const nodeToolDirectory = path.join(buildDirectory, "tool-cache", `node-${nodeVersion}-win-x64`);
 const nodeExecutable = path.join(nodeToolDirectory, "node.exe");
 const seaFuse = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
+const dosELfanewOffset = 0x3c;
+const peSignature = "PE\0\0";
+const peSignatureSize = 4;
+const coffHeaderSize = 20;
+const coffOptionalHeaderSizeOffset = 16;
+const optionalHeaderMagicOffset = 0;
+const optionalHeaderSubsystemOffset = 68;
+const pe32PlusOptionalHeaderMagic = 0x20b;
+const windowsGuiSubsystem = 2;
+const windowsCuiSubsystem = 3;
+
+function inspectPeSubsystem(executable) {
+  if (executable.length < dosELfanewOffset + 4 || executable.toString("ascii", 0, 2) !== "MZ") {
+    throw new Error("Coordinator SEA output does not have a valid DOS/MZ header.");
+  }
+
+  const peHeaderOffset = executable.readUInt32LE(dosELfanewOffset);
+  const minimumPeHeaderSize = peSignatureSize + coffHeaderSize;
+  if (peHeaderOffset > executable.length - minimumPeHeaderSize) {
+    throw new Error("Coordinator SEA output has an invalid PE header offset.");
+  }
+  if (executable.toString("ascii", peHeaderOffset, peHeaderOffset + peSignatureSize) !== peSignature) {
+    throw new Error("Coordinator SEA output does not have a valid PE signature.");
+  }
+
+  const coffHeaderOffset = peHeaderOffset + peSignatureSize;
+  const optionalHeaderSize = executable.readUInt16LE(coffHeaderOffset + coffOptionalHeaderSizeOffset);
+  const optionalHeaderOffset = coffHeaderOffset + coffHeaderSize;
+  const minimumOptionalHeaderSize = optionalHeaderSubsystemOffset + 2;
+  if (
+    optionalHeaderSize < minimumOptionalHeaderSize
+    || optionalHeaderOffset > executable.length - optionalHeaderSize
+  ) {
+    throw new Error("Coordinator SEA output has a truncated Optional Header.");
+  }
+  if (executable.readUInt16LE(optionalHeaderOffset + optionalHeaderMagicOffset) !== pe32PlusOptionalHeaderMagic) {
+    throw new Error("Coordinator SEA output does not have a PE32+ Optional Header.");
+  }
+
+  const subsystemOffset = optionalHeaderOffset + optionalHeaderSubsystemOffset;
+  return {
+    subsystem: executable.readUInt16LE(subsystemOffset),
+    subsystemOffset,
+  };
+}
+
+async function transformToWindowsGuiExecutable(executablePath) {
+  const executable = await readFile(executablePath);
+  const { subsystem, subsystemOffset } = inspectPeSubsystem(executable);
+  if (subsystem !== windowsCuiSubsystem) {
+    throw new Error("Coordinator SEA output does not have the expected WINDOWS_CUI subsystem.");
+  }
+
+  executable.writeUInt16LE(windowsGuiSubsystem, subsystemOffset);
+  await writeFile(executablePath, executable);
+
+  const transformed = inspectPeSubsystem(await readFile(executablePath));
+  if (transformed.subsystem !== windowsGuiSubsystem) {
+    throw new Error("Coordinator SEA output did not retain the WINDOWS_GUI subsystem.");
+  }
+}
 
 async function sha256(filePath) {
   const hash = createHash("sha256");
@@ -129,8 +190,10 @@ async function buildCoordinator() {
     await inject(stagedCoordinatorOutput, "NODE_SEA_BLOB", await readFile(seaBlobPath), {
       sentinelFuse: seaFuse,
     });
+    await transformToWindowsGuiExecutable(stagedCoordinatorOutput);
     const outputInfo = await stat(stagedCoordinatorOutput);
-    if (!outputInfo.isFile() || outputInfo.size === 0) {
+    const { subsystem } = inspectPeSubsystem(await readFile(stagedCoordinatorOutput));
+    if (!outputInfo.isFile() || outputInfo.size === 0 || subsystem !== windowsGuiSubsystem) {
       throw new Error("Coordinator SEA build did not produce an executable.");
     }
     await rename(stagedCoordinatorOutput, coordinatorOutput);

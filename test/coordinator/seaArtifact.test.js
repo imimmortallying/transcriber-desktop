@@ -5,11 +5,28 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const test = require("node:test");
 const { coordinatorOutput } = require("../../scripts/buildCoordinator");
-const { getNsisCompiler, run } = require("../../scripts/buildStableLauncher");
+const { buildStableLauncher, getNsisCompiler, run } = require("../../scripts/buildStableLauncher");
 const { CoordinatorExitCode } = require("../../src/coordinator/main");
 
 const projectRoot = path.resolve(__dirname, "../..");
 const fakeClientSource = path.join(__dirname, "fakeClient.nsi");
+
+function readFinalArtifactSubsystem(executable) {
+  assert.ok(executable.length >= 0x40);
+  assert.equal(executable.toString("ascii", 0, 2), "MZ");
+
+  const peHeaderOffset = executable.readUInt32LE(0x3c);
+  assert.ok(peHeaderOffset <= executable.length - 24);
+  assert.equal(executable.toString("ascii", peHeaderOffset, peHeaderOffset + 4), "PE\0\0");
+
+  const coffHeaderOffset = peHeaderOffset + 4;
+  const optionalHeaderSize = executable.readUInt16LE(coffHeaderOffset + 16);
+  const optionalHeaderOffset = coffHeaderOffset + 20;
+  assert.ok(optionalHeaderSize >= 70);
+  assert.ok(optionalHeaderOffset <= executable.length - optionalHeaderSize);
+  assert.equal(executable.readUInt16LE(optionalHeaderOffset), 0x20b);
+  return executable.readUInt16LE(optionalHeaderOffset + 68);
+}
 
 function runCoordinator(executablePath) {
   const windowsDirectory = process.env.SystemRoot || process.env.WINDIR;
@@ -75,11 +92,13 @@ async function waitForMarker(markerPath) {
 test("SEA coordinator reads shared state from installed geometry without Node in PATH", async () => {
   const outputInfo = await stat(coordinatorOutput);
   assert.equal(outputInfo.isFile(), true);
+  assert.equal(readFinalArtifactSubsystem(await readFile(coordinatorOutput)), 2);
 
   const root = await mkdtemp(path.join(os.tmpdir(), "asr-coordinator-sea-"));
   try {
     const coordinatorDirectory = path.join(root, "Coordinator");
     const installedCoordinator = path.join(coordinatorDirectory, "asr-coordinator.exe");
+    const installedLauncher = path.join(root, "asr-launch.exe");
     const stateDirectory = path.join(root, "InstallationState");
     const state = `${stateForVersion("0.1.0")}\n`;
     await mkdir(coordinatorDirectory, { recursive: true });
@@ -96,6 +115,8 @@ test("SEA coordinator reads shared state from installed geometry without Node in
     assert.equal(result.code, CoordinatorExitCode.SELECTED_CLIENT_UNAVAILABLE);
     assert.equal(result.stdout, "");
     assert.equal(result.stderr, "");
+    await buildStableLauncher({ outputPath: installedLauncher, testMode: true });
+    assert.equal((await runCoordinator(installedLauncher)).code, CoordinatorExitCode.SELECTED_CLIENT_UNAVAILABLE);
     assert.deepEqual(await Promise.all([
       readFile(path.join(stateDirectory, "slot-a.json"), "utf8"),
       readFile(path.join(stateDirectory, "slot-b.json"), "utf8"),
@@ -113,6 +134,7 @@ test("SEA coordinator launches only the selected normal Windows Client without N
   try {
     const coordinatorDirectory = path.join(root, "Coordinator");
     const installedCoordinator = path.join(coordinatorDirectory, "asr-coordinator.exe");
+    const installedLauncher = path.join(root, "asr-launch.exe");
     const stateDirectory = path.join(root, "InstallationState");
     const selectedClientDirectory = path.join(root, "Clients", "0.2.0");
     const selectedClientExecutable = path.join(selectedClientDirectory, "local-asr-prototype.exe");
@@ -137,6 +159,10 @@ test("SEA coordinator launches only the selected normal Windows Client without N
     assert.equal(result.code, CoordinatorExitCode.SUCCESS);
     assert.equal(result.stdout, "");
     assert.equal(result.stderr, "");
+    assert.equal(await waitForMarker(selectedMarker), "selected Client launched\r\n");
+    await rm(selectedMarker);
+    await buildStableLauncher({ outputPath: installedLauncher, testMode: true });
+    assert.equal((await runCoordinator(installedLauncher)).code, CoordinatorExitCode.SUCCESS);
     assert.equal(await waitForMarker(selectedMarker), "selected Client launched\r\n");
     await assert.rejects(readFile(path.join(root, "Clients", "0.1.0", "CLIENT_LAUNCHED.txt"), "utf8"), {
       code: "ENOENT",
