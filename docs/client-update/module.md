@@ -181,11 +181,14 @@ known-good Clients. A prepared transaction keeps active equal to known-good and
 uses a different candidate; an activated transaction makes active equal to the
 candidate while retaining a different known-good Client.
 
-This slice adds only strict v2 normalization and semantic comparison. Existing
-slot readers, Coordinator and Full Setup continue to treat v2 as unsupported;
-bootstrap, provision and reconcile still write v1 only. No migration, prepare,
-activation, READY, commit or rollback behavior is implemented. Reader
-compatibility must be deployed before a future writer may publish v2.
+This slice adds strict v2 normalization, semantic comparison and one explicit
+readonly launch reader. Coordinator uses that launch reader to accept valid v1
+or v2 and still validates and launches only `activeClient`; transaction fields
+do not select a Client or cause lifecycle actions. The default slot reader used
+by Full Setup remains v1-only, so inspect, bootstrap, provision and reconcile
+still treat v2 as unsupported and write v1 only. No migration, prepare,
+activation, READY, commit or rollback behavior is implemented. Full Setup
+compatibility remains required before a future writer may publish v2.
 
 ## Failure, rollback и recovery
 

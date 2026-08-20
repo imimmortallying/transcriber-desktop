@@ -15,6 +15,7 @@ const {
   normalizeStateV2,
   publishInitialState,
   readInstallationState,
+  readLaunchInstallationState,
   reconcileInstallationState,
   sameLogicalState,
   stateForVersion,
@@ -166,6 +167,71 @@ test("current v1 slot reader leaves a valid v2 document unsupported and writers 
     assert.equal(result.kind, "unsupported");
     assert.equal(result.slots[1].kind, "unsupported");
     assert.equal(stateForVersion("0.1.0", 1).schemaVersion, 1);
+  });
+});
+
+test("launch reader accepts valid v2 steady, prepared, and activated states", async () => {
+  await withInstallation(async (root) => {
+    const states = [
+      stateV2(),
+      preparedStateV2(),
+      activatedStateV2(),
+    ];
+    for (const state of states) {
+      await writeSlot(root, SLOT_NAMES[0], state);
+      await writeSlot(root, SLOT_NAMES[1], state);
+      const result = await readLaunchInstallationState(root);
+      assert.equal(result.kind, "selected");
+      assert.deepEqual(result.selected, normalizeStateV2(state));
+    }
+  });
+});
+
+test("launch reader selects the highest valid v1 or v2 generation and rejects equal-generation conflicts", async () => {
+  await withInstallation(async (root) => {
+    await writeSlot(root, SLOT_NAMES[0], stateForVersion("0.1.0", 10));
+    await writeSlot(root, SLOT_NAMES[1], stateV2({ generation: 11 }));
+    assert.deepEqual((await readLaunchInstallationState(root)).selected, normalizeStateV2(stateV2({ generation: 11 })));
+
+    await writeSlot(root, SLOT_NAMES[0], stateV2({ generation: 12 }));
+    await writeSlot(root, SLOT_NAMES[1], stateForVersion("0.1.0", 13));
+    assert.deepEqual((await readLaunchInstallationState(root)).selected, stateForVersion("0.1.0", 13));
+
+    await writeSlot(root, SLOT_NAMES[0], stateForVersion("0.1.0", 14));
+    await writeSlot(root, SLOT_NAMES[1], stateV2({ generation: 14 }));
+    assert.equal((await readLaunchInstallationState(root)).kind, "ambiguous");
+
+    await writeSlot(root, SLOT_NAMES[0], preparedStateV2());
+    await writeSlot(root, SLOT_NAMES[1], stateV2({
+      updateTransaction: {
+        phase: "prepared",
+        candidateClient: { version: "0.3.0" },
+      },
+    }));
+    assert.equal((await readLaunchInstallationState(root)).kind, "ambiguous");
+  });
+});
+
+test("launch reader fails closed for invalid v2 and future schemas", async () => {
+  await withInstallation(async (root) => {
+    await writeSlot(root, SLOT_NAMES[0], stateForVersion("0.1.0", 1));
+    await writeSlot(root, SLOT_NAMES[1], stateV2({
+      updateTransaction: {
+        phase: "prepared",
+        candidateClient: { version: "0.1.0" },
+      },
+    }));
+    const invalidResult = await readLaunchInstallationState(root);
+    assert.equal(invalidResult.kind, "uninspectable");
+    assert.equal(invalidResult.slots[1].kind, "uninspectable");
+
+    await writeSlot(root, SLOT_NAMES[1], {
+      schemaVersion: 3,
+      generation: 2,
+      activeClient: { version: "0.2.0" },
+      knownGoodClient: { version: "0.2.0" },
+    });
+    assert.equal((await readLaunchInstallationState(root)).kind, "unsupported");
   });
 });
 

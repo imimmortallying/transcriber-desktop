@@ -1,7 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
-const { assertSelectedClient, readInstallationState } = require("../update/installationState");
+const { assertSelectedClient, readLaunchInstallationState } = require("../update/installationState");
 
 const COORDINATOR_EXECUTABLE = "asr-coordinator.exe";
 const COORDINATOR_DIRECTORY = "Coordinator";
@@ -126,7 +126,7 @@ function clientErrorExitCode(error) {
 async function runCoordinator({
   executablePath = process.execPath,
   fsApi = fs,
-  readState = readInstallationState,
+  readState = readLaunchInstallationState,
   assertClient = assertSelectedClient,
   spawnFn = spawn,
 } = {}) {

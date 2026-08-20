@@ -64,6 +64,19 @@ function stateForVersion(version) {
   });
 }
 
+function activatedStateForVersion(activeVersion, knownGoodVersion) {
+  return JSON.stringify({
+    schemaVersion: 2,
+    generation: 1,
+    activeClient: { version: activeVersion },
+    knownGoodClient: { version: knownGoodVersion },
+    updateTransaction: {
+      phase: "activated",
+      candidateClient: { version: activeVersion },
+    },
+  });
+}
+
 async function buildFakeClient(outputPath) {
   const compilerPath = await getNsisCompiler();
   await run(compilerPath, [
@@ -165,6 +178,54 @@ test("SEA coordinator launches only the selected normal Windows Client without N
     assert.equal((await runCoordinator(installedLauncher)).code, CoordinatorExitCode.SUCCESS);
     assert.equal(await waitForMarker(selectedMarker), "selected Client launched\r\n");
     await assert.rejects(readFile(path.join(root, "Clients", "0.1.0", "CLIENT_LAUNCHED.txt"), "utf8"), {
+      code: "ENOENT",
+    });
+    assert.deepEqual(await Promise.all([
+      readFile(path.join(stateDirectory, "slot-a.json"), "utf8"),
+      readFile(path.join(stateDirectory, "slot-b.json"), "utf8"),
+    ]), before);
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});
+
+test("SEA coordinator launches the active candidate from v2 activated state without Node in PATH", async () => {
+  const outputInfo = await stat(coordinatorOutput);
+  assert.equal(outputInfo.isFile(), true);
+
+  const root = await mkdtemp(path.join(os.tmpdir(), "asr-coordinator-sea-"));
+  try {
+    const coordinatorDirectory = path.join(root, "Coordinator");
+    const installedCoordinator = path.join(coordinatorDirectory, "asr-coordinator.exe");
+    const installedLauncher = path.join(root, "asr-launch.exe");
+    const stateDirectory = path.join(root, "InstallationState");
+    const knownGoodDirectory = path.join(root, "Clients", "0.1.0");
+    const activeCandidateDirectory = path.join(root, "Clients", "0.2.0");
+    const activeCandidateExecutable = path.join(activeCandidateDirectory, "local-asr-prototype.exe");
+    const activeCandidateMarker = path.join(activeCandidateDirectory, "CLIENT_LAUNCHED.txt");
+    const state = `${activatedStateForVersion("0.2.0", "0.1.0")}\n`;
+    await Promise.all([
+      mkdir(coordinatorDirectory, { recursive: true }),
+      mkdir(stateDirectory, { recursive: true }),
+      mkdir(knownGoodDirectory, { recursive: true }),
+      mkdir(activeCandidateDirectory, { recursive: true }),
+    ]);
+    await copyFile(coordinatorOutput, installedCoordinator);
+    await buildFakeClient(activeCandidateExecutable);
+    await writeFile(path.join(stateDirectory, "slot-a.json"), state, "utf8");
+    await writeFile(path.join(stateDirectory, "slot-b.json"), state, "utf8");
+    const before = await Promise.all([
+      readFile(path.join(stateDirectory, "slot-a.json"), "utf8"),
+      readFile(path.join(stateDirectory, "slot-b.json"), "utf8"),
+    ]);
+
+    assert.equal((await runCoordinator(installedCoordinator)).code, CoordinatorExitCode.SUCCESS);
+    assert.equal(await waitForMarker(activeCandidateMarker), "selected Client launched\r\n");
+    await rm(activeCandidateMarker);
+    await buildStableLauncher({ outputPath: installedLauncher, testMode: true });
+    assert.equal((await runCoordinator(installedLauncher)).code, CoordinatorExitCode.SUCCESS);
+    assert.equal(await waitForMarker(activeCandidateMarker), "selected Client launched\r\n");
+    await assert.rejects(readFile(path.join(knownGoodDirectory, "CLIENT_LAUNCHED.txt"), "utf8"), {
       code: "ENOENT",
     });
     assert.deepEqual(await Promise.all([

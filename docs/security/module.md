@@ -114,8 +114,10 @@ security audit и не утверждает наличие уязвимости 
   root-owned Coordinator before launcher and state provisioning.
 - **Control:** `InstallationState` contains only two bounded JSON snapshots.
   Schema v1 accepts exact typed fields, a positive generation and equal
-  active/known-good single-segment Client keys. It derives Client paths only as
-  `<root>/Clients/<key>`, validates canonical containment, rejects reparse
+  active/known-good single-segment Client keys. Coordinator's explicit readonly
+  launch reader additionally accepts only protocol-valid schema-v2 steady,
+  prepared or activated state, while Full Setup retains its v1-only reader and
+  mutation authority. It derives Client paths only as `<root>/Clients/<key>`, validates canonical containment, rejects reparse
   points and requires the expected Client executable. Reader never scans
   `Clients`; unsupported schema, oversized/uninspectable slot and duplicate JSON
   keys in either slot win over otherwise valid v1 and remain read-only. Initial

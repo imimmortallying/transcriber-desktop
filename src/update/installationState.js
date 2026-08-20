@@ -292,7 +292,34 @@ function parseJsonWithUniqueKeys(raw) {
   return value;
 }
 
-async function classifySlot(slotPath, { fsApi = fs } = {}) {
+function classifyParsedState(parsed, acceptedSchemaVersions) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)
+    || !Number.isSafeInteger(parsed.schemaVersion) || parsed.schemaVersion < 1) {
+    return { kind: "uninspectable" };
+  }
+  if (!acceptedSchemaVersions.includes(parsed.schemaVersion)) {
+    return { kind: "unsupported" };
+  }
+
+  const normalize = parsed.schemaVersion === SCHEMA_VERSION
+    ? normalizeState
+    : parsed.schemaVersion === SCHEMA_VERSION_V2
+      ? normalizeStateV2
+      : undefined;
+  if (!normalize) {
+    return { kind: "unsupported" };
+  }
+  try {
+    return { kind: "valid", state: normalize(parsed) };
+  } catch (error) {
+    if (error instanceof InstallationStateError && error.code === "UNSUPPORTED_SCHEMA") {
+      return { kind: "unsupported" };
+    }
+    return { kind: parsed.schemaVersion === SCHEMA_VERSION_V2 ? "uninspectable" : "invalid" };
+  }
+}
+
+async function classifySlot(slotPath, { fsApi = fs, acceptedSchemaVersions = [SCHEMA_VERSION] } = {}) {
   let raw;
   try {
     const slotInfo = await fsApi.lstat(slotPath);
@@ -314,26 +341,10 @@ async function classifySlot(slotPath, { fsApi = fs } = {}) {
     return { kind: "uninspectable", path: slotPath };
   }
 
-  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    && Number.isSafeInteger(parsed.schemaVersion) && parsed.schemaVersion > 0
-    && parsed.schemaVersion !== SCHEMA_VERSION) {
-    return { kind: "unsupported", path: slotPath };
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || parsed.schemaVersion !== SCHEMA_VERSION) {
-    return { kind: "uninspectable", path: slotPath };
-  }
-
-  try {
-    return { kind: "valid", path: slotPath, state: normalizeState(parsed) };
-  } catch (error) {
-    if (error instanceof InstallationStateError && error.code === "UNSUPPORTED_SCHEMA") {
-      return { kind: "unsupported", path: slotPath };
-    }
-    return { kind: "invalid", path: slotPath };
-  }
+  return { ...classifyParsedState(parsed, acceptedSchemaVersions), path: slotPath };
 }
 
-async function readInstallationState(installationRoot, options = {}) {
+async function readInstallationStateWithSchemas(installationRoot, acceptedSchemaVersions, options = {}) {
   const stateDirectory = path.join(path.resolve(installationRoot), STATE_DIRECTORY);
   const { fsApi = fs } = options;
   let stateDirectoryExists = false;
@@ -354,7 +365,10 @@ async function readInstallationState(installationRoot, options = {}) {
     }
   }
   const slots = await Promise.all(
-    SLOT_NAMES.map((slotName) => classifySlot(path.join(stateDirectory, slotName), options)),
+    SLOT_NAMES.map((slotName) => classifySlot(path.join(stateDirectory, slotName), {
+      ...options,
+      acceptedSchemaVersions,
+    })),
   );
 
   if (slots.some((slot) => slot.kind === "unsupported")) {
@@ -386,6 +400,14 @@ async function readInstallationState(installationRoot, options = {}) {
     return { kind: "selected", stateDirectory, stateDirectoryExists, slots, selected: first.state };
   }
   return { kind: "ambiguous", stateDirectory, stateDirectoryExists, slots };
+}
+
+async function readInstallationState(installationRoot, options = {}) {
+  return readInstallationStateWithSchemas(installationRoot, [SCHEMA_VERSION], options);
+}
+
+async function readLaunchInstallationState(installationRoot, options = {}) {
+  return readInstallationStateWithSchemas(installationRoot, [SCHEMA_VERSION, SCHEMA_VERSION_V2], options);
 }
 
 function isReparsePoint(info) {
@@ -614,6 +636,7 @@ module.exports = {
   parseJsonWithUniqueKeys,
   publishInitialState,
   readInstallationState,
+  readLaunchInstallationState,
   reconcileInstallationState,
   removeProvisioningStateArtifacts,
   sameLogicalState,
