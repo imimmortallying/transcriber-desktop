@@ -11,6 +11,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   const stableLauncherSource = await readFile(path.join(projectRoot, "build", "stable-launcher.nsi"), "utf8");
   const stableLauncherBuilder = await readFile(path.join(projectRoot, "scripts", "buildStableLauncher.js"), "utf8");
   const runtimeArchiveBuilder = await readFile(path.join(projectRoot, "scripts", "buildRuntimeArchive.js"), "utf8");
+  const mainSource = await readFile(path.join(projectRoot, "src", "main.js"), "utf8");
   const customInit = installerScript.slice(
     installerScript.indexOf("!macro customInit"),
     installerScript.indexOf("!macro customPageAfterChangeDir"),
@@ -28,6 +29,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.equal(packageJson.scripts["prepare:runtime"], "node scripts/buildRuntimeArchive.js");
   assert.equal(packageJson.scripts["build:launcher"], "node scripts/buildStableLauncher.js");
   assert.equal(packageJson.scripts["test:launcher"], "node --test test/launcher/stableLauncher.test.js");
+  assert.equal(packageJson.scripts["test:update-state"], "node --test test/update/installationState.test.js");
   assert.match(packageJson.scripts["dist:win"], /^npm run build:launcher && npm run prepare:runtime && electron-builder/);
   assert.equal(packageJson.devDependencies["7zip-bin"], "5.2.0");
   assert.match(runtimeArchiveBuilder, /require\("7zip-bin"\)/);
@@ -52,6 +54,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(customInit, /IfFileExists "\$legacyInstallLocation\\resources\\python\\python\.exe" blockLegacyLayout classifyRegisteredClientLayout/);
   assert.match(customInit, /\$\{StdUtils\.GetParentPath\} \$0 "\$legacyInstallLocation"[\s\S]*\$\{GetFileName\} "\$0" \$1[\s\S]*StrCmp \$1 "Clients" 0 blockUnknownRegisteredLayout[\s\S]*\$\{GetFileName\} "\$legacyInstallLocation" \$1[\s\S]*StrCmp \$1 "" blockUnknownRegisteredLayout[\s\S]*IfFileExists "\$legacyInstallLocation\\Uninstall \$\{PRODUCT_FILENAME\}\.exe" existingClientLayout blockUnknownRegisteredLayout/);
   assert.match(customInit, /existingClientLayout:[\s\S]*\$\{StdUtils\.GetParentPath\} \$asrRootDirectory "\$0"[\s\S]*StrCmp \$asrRootDirectory "" blockUnknownRegisteredLayout/);
+  assert.match(customInit, /existingClientLayout:[\s\S]*Call preflightInstallationState[\s\S]*StrCpy \$installationStateProvisioningMode "provision"/);
   assert.doesNotMatch(customInit, /StrCmp \$0 "Client"/);
   assert.match(customInit, /Обнаружена предыдущая версия ASR в \$legacyInstallLocation/);
   assert.match(customInit, /Пользовательские данные и результаты при этом сохраняются\./);
@@ -66,6 +69,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(customUninstall, /\$\{GetFileName\} "\$INSTDIR" \$1[\s\S]*StrCmp \$1 "\$\{VERSION\}" 0 asrCustomUninstallLocationValidationFailure/);
   assert.match(customUninstall, /\$\{StdUtils\.GetParentPath\} \$uninstallClientsDirectory "\$INSTDIR"[\s\S]*\$\{GetFileName\} "\$uninstallClientsDirectory" \$1[\s\S]*StrCmp \$1 "Clients" 0 asrCustomUninstallLocationValidationFailure[\s\S]*\$\{StdUtils\.GetParentPath\} \$uninstallAsrRootDirectory "\$uninstallClientsDirectory"/);
   assert.match(customUninstall, /StrCpy \$uninstallManualRuntimeCleanupEligible "1"[\s\S]*Delete "\$uninstallAsrRootDirectory\\asr-launch\.exe"/);
+  assert.match(customUninstall, /Delete "\$uninstallAsrRootDirectory\\asr-launch\.exe"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\InstallationState"/);
   assert.ok(
     customUninstall.indexOf("Goto asrCustomUninstallDone") <
       customUninstall.indexOf('Delete "$uninstallAsrRootDirectory\\asr-launch.exe"'),
@@ -121,6 +125,15 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   );
   assert.match(installerScript, /CreateShortCut "\$newDesktopLink" "\$stableLauncherPath"/);
   assert.match(installerScript, /CreateShortCut "\$newStartMenuLink" "\$stableLauncherPath"/);
+  assert.match(installerScript, /Function preflightInstallationState[\s\S]*IfFileExists "\$asrRootDirectory\\InstallationState\\NUL" 0 installationStatePreflightDone[\s\S]*StrCpy \$installationStateExistedBeforeInstall "1"[\s\S]*--asr-installation-state=inspect[\s\S]*StrCmp \$installationStateExitCode "21" installationStatePreflightUnsupported installationStatePreflightCheckUninspectable[\s\S]*StrCmp \$installationStateExitCode "23" installationStatePreflightUninspectable/);
+  assert.match(installerScript, /Function cleanupFailedInstallationState[\s\S]*StrCmp \$installationStateExistedBeforeInstall "1" installationStateCleanupDone[\s\S]*RMDir \/r "\$asrRootDirectory\\InstallationState"[\s\S]*installationStateCleanupDone:\s+Return/);
+  assert.match(installerScript, /stableLauncherShortcutsDone:[\s\S]*--asr-installation-state=\$installationStateProvisioningMode[\s\S]*StrCmp \$installationStateExitCode "23" installationStateUninspectableAfterInstall[\s\S]*installationStateProvisioningFailure:[\s\S]*Call cleanupFailedInstallationState[\s\S]*Call cleanupFailedClientInstall/);
+  assert.match(mainSource, /--asr-installation-state=/);
+  assert.match(mainSource, /\["inspect", "reconcile", "provision", "cleanup"\]/);
+  assert.match(mainSource, /derivePackagedInstallation\(\)/);
+  assert.match(mainSource, /mode === "inspect"[\s\S]*result\.kind === "uninspectable"[\s\S]*UNINSPECTABLE_STATE/);
+  assert.match(mainSource, /error\.code === "UNSUPPORTED_SCHEMA"[\s\S]*app\.exit\(21\)[\s\S]*error\.code === "UNINSPECTABLE_STATE" \? 23 : 22/);
+  assert.doesNotMatch(installerScript, /\$\{APP_EXECUTABLE_FILENAME\}/);
   assert.doesNotMatch(installerScript, /CreateShortCut "\$newDesktopLink" "\$INSTDIR\\\$\{APP_EXECUTABLE_FILENAME\}"/);
   assert.ok(
     installerScript.indexOf('nsExec::ExecToStack /OEM \'"$runtimeExtractorPath" x -y "-o$runtimeStagingDirectory" "$runtimeArchivePath"\'') <

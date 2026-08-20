@@ -22,6 +22,17 @@ stub не хранит active/candidate/known-good, не выполняет READ
 или rollback. Registration `InstallLocation` и uninstaller временно остаются
 принадлежностью текущего Client.
 
+Slice 5 добавляет root-owned foundation
+`<ASR root>/InstallationState/slot-a.json` и `slot-b.json`. Schema v1 содержит
+только `schemaVersion`, positive `generation`, равные `activeClient` и
+`knownGoodClient`; transaction/candidate semantics в ней намеренно отсутствуют.
+Reader читает только два slot-а, отвергает unknown schema и uninspectable state и
+не выбирает Client по геометрии файловой системы. Full Setup временно provision/reconcile-ит state
+через internal non-UI mode установленного Client; это не делает Client будущим
+update coordinator, которым остаётся stable launch/update infrastructure.
+В v1 `knownGoodClient` — bootstrap designation successful Full Setup, а не
+подтверждение READY; READY semantics появится только с будущим coordinator.
+
 ## Граница milestone
 
 Client release создаётся независимо от Runtime. Официальный artifact Client —
@@ -61,7 +72,11 @@ release/build
 compatibility check происходят до staging и activation. Большие или
 потенциально ненадёжные операции выполняются до activation; это короткое,
 устойчивое к внезапному прерыванию логическое переключение installation state.
-Конкретный атомарный механизм пока не выбран.
+Slice 5 реализует staged initial publication и two-slot snapshots только для
+steady schema v1. File flush + rename дают process/interrupted-write recovery
+при normal Windows filesystem assumptions; это не доказанная гарантия hard
+power-loss durability directory metadata. Transactional activation/recovery
+format остаётся будущей работой.
 
 ## Термины и ownership
 
@@ -112,6 +127,29 @@ artifact — обязательный этап lifecycle, а не post-factum д
   Binary rollback не считается полноценным, если новая версия необратимо
   изменила persistent data так, что known-good Client больше не может её читать.
 
+### InstallationState schema v1
+
+```json
+{
+  "schemaVersion": 1,
+  "generation": 1,
+  "activeClient": { "version": "0.1.0" },
+  "knownGoodClient": { "version": "0.1.0" }
+}
+```
+
+`version` — validated single path segment: protocol строит только
+`<ASR root>/Clients/<version>`, а arbitrary paths не хранит. Bootstrap создаёт
+две semantically identical generation-1 snapshots. Higher generation побеждает
+только между valid snapshots; equal generation с разным semantic content —
+ошибка, не выбор по имени slot-а или времени файла. Один valid slot может
+восстановить redundancy с generation + 1. Только JSON object, явно помеченный
+`schemaVersion: 1`, но не проходящий v1 validation, считается repairable under
+explicit Full Setup authority. Unknown/newer schema, oversized/uninspectable
+slot и structurally ambiguous JSON (включая duplicate keys) имеют приоритет над
+valid v1 и приводят к read-only abort: старый Full Setup не удаляет и не
+перезаписывает такие state files.
+
 ## Failure, rollback и recovery
 
 | Момент отказа | Обязательный результат |
@@ -140,5 +178,5 @@ implementation-level решения, их controls и verification будут з
 updater self-update, update channels, staged rollout, delta updates, retention
 policy, полноценную migration strategy application data, конкретный online
 backend или storage, concrete launcher/updater layout, IPC, криптографию и
-механизм атомарной записи. Архитектурные границы не должны закрывать путь к этим
-возможностям, но первая реализация остаётся простой.
+transaction/activation schema. Архитектурные границы не должны закрывать путь к
+этим возможностям, но первая реализация остаётся простой.

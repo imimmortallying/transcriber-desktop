@@ -43,6 +43,9 @@ Client и Runtime, но устанавливает их физически ра�
 ```text
 <ASR root>/
   asr-launch.exe          # stable launch stub; not a versioned Client
+  InstallationState/      # root-owned schema-v1 snapshots
+    slot-a.json
+    slot-b.json
   Clients/
     <client version>/     # NSIS application install directory
       local-asr-prototype.exe
@@ -83,6 +86,15 @@ Windows registration `InstallLocation` и штатный electron-builder uninst
 launcher только после существующей structural validation зарегистрированного
 `Clients/<client version>` layout; затем штатный uninstall удаляет shortcuts и Client.
 
+После успешной установки Client, Runtime, launcher и shortcuts Setup запускает
+internal non-UI mode установленного Client. Он временно provision/reconcile-ит
+root-owned `InstallationState`; normal Electron window не открывается. Before
+replacement existing registered Client Setup read-only проверяет state тем же
+protocol. Unknown/newer schema, oversized/uninspectable state или duplicate JSON
+keys останавливают Setup до replacement и сохраняют Client, Runtime, launcher,
+shortcuts, registry и state bytes. NSIS не парсит JSON,
+а launcher по-прежнему принимает ровно один Client.
+
 `Runtime.staging` и `Runtime.previous` ниже относятся только к реализованной
 доставке Runtime внутри Full Offline Setup. Они не задают будущий lifecycle
 Client-only update: его side-by-side candidate, activation, READY и rollback
@@ -93,6 +105,8 @@ Client-only update: его side-by-side candidate, activation, READY и rollback
 Только затем он выводит ASR root; при несовпадении Runtime не удаляется, а Client
 cleanup продолжается. Runtime cleanup является best-effort: при заблокированных
 файлах пользователь получает предупреждение с ASR root и оставшимся путём.
+Manual uninstall после той же ownership validation узко удаляет
+`InstallationState`; service uninstall намеренно его сохраняет.
 Electron userData, settings, transcripts, default results и внешняя results
 directory не относятся к installation lifecycle и не удаляются ни ручным, ни
 служебным uninstall.
@@ -136,11 +150,11 @@ previous Client: штатный upgrade flow уже заменил Client до R
 
 | Сценарий | Client | Runtime и staging | Пользовательские данные |
 | --- | --- | --- | --- |
-| Clean install | Создаётся в `<root>/Clients/<client version>`. | Full Setup распаковывает Runtime в `Runtime.staging`, проверяет manifest и продвигает его в `<root>/Runtime`. | Не создаются и не удаляются установщиком. |
-| Full Setup reinstall | Заменяется штатным install flow. | Новый payload сначала проходит staging; существующий `Runtime` временно становится `Runtime.previous`, а после успешного promotion удаляется. | Сохраняются. |
+| Clean install | Создаётся в `<root>/Clients/<client version>`; затем internal provisioning mode создаёт две identical generation-1 state snapshots. | Full Setup распаковывает Runtime в `Runtime.staging`, проверяет manifest и продвигает его в `<root>/Runtime`. | Не создаются и не удаляются установщиком. |
+| Full Setup reinstall | Заменяется штатным install flow; same-version valid state сохраняется, newer Full Setup provision-ит steady v1 state без activation semantics. | Новый payload сначала проходит staging; существующий `Runtime` временно становится `Runtime.previous`, а после успешного promotion удаляется. | Сохраняются. |
 | Runtime deployment failure | Compensating cleanup удаляет новый Client, shortcuts и регистрацию штатным uninstaller; launcher, существовавший до reinstall, service uninstall не удаляет. | Existing `Runtime`, `Runtime.previous` и диагностический `Runtime.staging` не удаляются. При reinstall previous Client автоматически не восстанавливается. | Сохраняются. |
-| Manual user uninstall | Штатно удаляется текущий versioned Client; root-level launcher удаляется только после validation ownership layout. | Best-effort удаляются sibling `Runtime`, `Runtime.staging` и `Runtime.previous`; затем пустые `Clients` и root удаляются только без рекурсии. | Сохраняются. |
-| Service uninstall | В служебной uninstall-фазе удаляет только текущий versioned Client. | Не затрагивает launcher, Runtime, staging и backup. | Сохраняются. |
+| Manual user uninstall | Штатно удаляется текущий versioned Client; root-level launcher и InstallationState удаляются только после validation ownership layout. | Best-effort удаляются sibling `Runtime`, `Runtime.staging` и `Runtime.previous`; затем пустые `Clients` и root удаляются только без рекурсии. | Сохраняются. |
+| Service uninstall | В служебной uninstall-фазе удаляет только текущий versioned Client. | Не затрагивает launcher, InstallationState, Runtime, staging и backup. | Сохраняются. |
 | Full Setup repair | Existing Client допускается без проверки здоровья Runtime. | Full Setup заново доставляет Runtime; это repair отсутствующего или повреждённого Runtime. | Сохраняются. |
 | Legacy monolith | Не изменяется автоматически. | Setup блокируется до ручного удаления legacy приложения; последующий Setup — clean install. | Сохраняются при удалении legacy приложения. |
 
@@ -148,6 +162,12 @@ previous Client: штатный upgrade flow уже заменил Client до R
 backup уже рабочего Runtime на время promotion. Эти директории не считаются
 пользовательскими данными: при обычном uninstall они удаляются вместе с Runtime,
 а при ошибке deployment сохраняются для диагностики и защиты уже рабочего Runtime.
+
+State provisioning failure после fresh bootstrap удаляет только state artifacts,
+созданные этой попыткой. Если `InstallationState` существовал до repair/reconcile,
+generic failure cleanup его не удаляет: retained snapshot может ссылаться на
+удалённый compensating Client и тогда является явным repair-required состоянием,
+не поводом искать Client по filesystem.
 
 ## Конфигурации и секреты
 

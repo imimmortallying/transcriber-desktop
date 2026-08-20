@@ -20,6 +20,10 @@
   Var runtimeCleanupExitCode
   Var runtimeCleanupStatus
   Var stableLauncherPath
+  Var installationStateClientExecutable
+  Var installationStateExitCode
+  Var installationStateProvisioningMode
+  Var installationStateExistedBeforeInstall
 !endif
 
 !ifdef BUILD_UNINSTALLER
@@ -61,6 +65,7 @@
 
     SetOutPath "$PLUGINSDIR"
     Delete "$uninstallAsrRootDirectory\asr-launch.exe"
+    RMDir /r "$uninstallAsrRootDirectory\InstallationState"
     RMDir /r "$uninstallAsrRootDirectory\Runtime"
     RMDir /r "$uninstallAsrRootDirectory\Runtime.staging"
     RMDir /r "$uninstallAsrRootDirectory\Runtime.previous"
@@ -115,6 +120,8 @@
 !macro customInit
   StrCpy $isExistingClientInstallation "0"
   StrCpy $asrRootDirectory ""
+  StrCpy $installationStateProvisioningMode "reconcile"
+  StrCpy $installationStateExistedBeforeInstall "0"
 
   ${if} $hasPerMachineInstallation == "1"
     MessageBox MB_OK|MB_ICONSTOP "A legacy all-users ASR installation was found. Remove the old all-users installation first, then run this per-user setup again."
@@ -149,6 +156,8 @@
     StrCpy $isExistingClientInstallation "1"
     ${StdUtils.GetParentPath} $asrRootDirectory "$0"
     StrCmp $asrRootDirectory "" blockUnknownRegisteredLayout
+    Call preflightInstallationState
+    StrCpy $installationStateProvisioningMode "provision"
 
   done:
 !macroend
@@ -163,6 +172,35 @@
 !macroend
 
 !ifndef BUILD_UNINSTALLER
+  Function preflightInstallationState
+    IfFileExists "$asrRootDirectory\InstallationState\NUL" 0 installationStatePreflightDone
+    StrCpy $installationStateExistedBeforeInstall "1"
+    StrCpy $installationStateClientExecutable "$legacyInstallLocation\${APP_FILENAME}.exe"
+    IfFileExists "$installationStateClientExecutable" 0 installationStatePreflightUnavailable
+    ClearErrors
+    ExecWait '"$installationStateClientExecutable" --asr-installation-state=inspect' $installationStateExitCode
+    IfErrors installationStatePreflightUnavailable
+    StrCmp $installationStateExitCode "0" installationStatePreflightDone
+    StrCmp $installationStateExitCode "21" installationStatePreflightUnsupported installationStatePreflightCheckUninspectable
+
+    installationStatePreflightCheckUninspectable:
+    StrCmp $installationStateExitCode "23" installationStatePreflightUninspectable installationStatePreflightUnavailable
+
+    installationStatePreflightUnsupported:
+      MessageBox MB_OK|MB_ICONSTOP "ASR installation state was created by a newer incompatible version.$\r$\nInstall a matching or newer Full Setup."
+      Quit
+
+    installationStatePreflightUnavailable:
+      MessageBox MB_OK|MB_ICONSTOP "ASR installation state could not be inspected safely.$\r$\nInstall a matching or newer Full Setup."
+      Quit
+
+    installationStatePreflightUninspectable:
+      MessageBox MB_OK|MB_ICONSTOP "ASR installation state is ambiguous or cannot be inspected safely.$\r$\nInstall a matching or newer Full Setup."
+      Quit
+
+    installationStatePreflightDone:
+  FunctionEnd
+
   Function addRuntimeSpaceRequired
     ; electron-builder's only install section has index 0.
     SectionGetSize 0 $0
@@ -244,6 +282,21 @@
 
     runtimeCleanupUninstallFailure:
       StrCpy $runtimeCleanupStatus "Compensating Client cleanup failed: the new Client uninstaller exited with code $runtimeCleanupExitCode."
+  FunctionEnd
+
+  Function cleanupFailedInstallationState
+    StrCmp $installationStateExistedBeforeInstall "1" installationStateCleanupDone
+    StrCpy $installationStateClientExecutable "$INSTDIR\${APP_FILENAME}.exe"
+    IfFileExists "$installationStateClientExecutable" 0 installationStateDirectCleanup
+    ClearErrors
+    ExecWait '"$installationStateClientExecutable" --asr-installation-state=cleanup' $installationStateExitCode
+
+    installationStateDirectCleanup:
+      SetOutPath "$PLUGINSDIR"
+      RMDir /r "$asrRootDirectory\InstallationState"
+
+    installationStateCleanupDone:
+    Return
   FunctionEnd
 
   Function clientDirectoryPre
@@ -394,4 +447,38 @@
     WinShell::SetLnkAUMI "$newStartMenuLink" "${APP_ID}"
 
   stableLauncherShortcutsDone:
+    StrCpy $installationStateClientExecutable "$INSTDIR\${APP_FILENAME}.exe"
+    IfFileExists "$installationStateClientExecutable" installationStateClientReady installationStateClientMissing
+
+  installationStateClientReady:
+    ClearErrors
+    ExecWait '"$installationStateClientExecutable" --asr-installation-state=$installationStateProvisioningMode' $installationStateExitCode
+    IfErrors installationStateProvisioningFailure
+    StrCmp $installationStateExitCode "0" installationStateProvisioningDone
+    StrCmp $installationStateExitCode "21" installationStateUnsupportedAfterInstall installationStateProvisioningCheckUninspectable
+
+  installationStateProvisioningCheckUninspectable:
+    StrCmp $installationStateExitCode "23" installationStateUninspectableAfterInstall installationStateProvisioningFailure
+
+  installationStateUnsupportedAfterInstall:
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR installation state was created by a newer incompatible version. The installed Client was removed and state was preserved."
+    Quit
+
+  installationStateUninspectableAfterInstall:
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR installation state is ambiguous or cannot be inspected safely. The installed Client was removed and state was preserved."
+    Quit
+
+  installationStateClientMissing:
+    StrCpy $runtimeCleanupStatus "Installation state provisioning failed: the installed Client executable is missing."
+    Goto installationStateProvisioningFailure
+
+  installationStateProvisioningFailure:
+    Call cleanupFailedInstallationState
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR installation state provisioning failed.$\r$\nClient: $INSTDIR$\r$\n$runtimeCleanupStatus"
+    Quit
+
+  installationStateProvisioningDone:
 !macroend

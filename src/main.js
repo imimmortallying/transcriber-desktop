@@ -4,6 +4,40 @@ const { readFile, readdir, rm, stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
 const { getCurrentRuntime } = require("./runtime/resolveRuntime");
+const {
+  InstallationStateError,
+  derivePackagedInstallation,
+  readInstallationState,
+  reconcileInstallationState,
+  removeProvisioningStateArtifacts,
+} = require("./update/installationState");
+
+const installationStateMode = process.argv.find((argument) => argument.startsWith("--asr-installation-state="));
+
+async function runInstallationStateMode(argument) {
+  const mode = argument.slice("--asr-installation-state=".length);
+  if (!app.isPackaged || !["inspect", "reconcile", "provision", "cleanup"].includes(mode)) {
+    throw new InstallationStateError("INVALID_PROVISIONING_MODE", "Invalid internal installation-state mode.");
+  }
+
+  const { installationRoot, version } = derivePackagedInstallation();
+  if (mode === "cleanup") {
+    await removeProvisioningStateArtifacts(installationRoot);
+    return;
+  }
+  if (mode === "inspect") {
+    const result = await readInstallationState(installationRoot);
+    if (result.kind === "unsupported") {
+      throw new InstallationStateError("UNSUPPORTED_SCHEMA", "Installation state was created by a newer incompatible version.");
+    }
+    if (result.kind === "uninspectable") {
+      throw new InstallationStateError("UNINSPECTABLE_STATE", "Installation state cannot be safely inspected.");
+    }
+    return;
+  }
+
+  await reconcileInstallationState(installationRoot, version, { mode: mode === "provision" ? "provision" : "repair" });
+}
 
 function getResultsSettingsPath() {
   return path.join(app.getPath("userData"), "settings.json");
@@ -447,19 +481,32 @@ ipcMain.handle("dialog:save-transcript", async (_event, transcript) => {
   return filePath;
 });
 
-app.whenReady().then(() => {
-  Menu.setApplicationMenu(null);
-  createWindow();
+if (installationStateMode) {
+  runInstallationStateMode(installationStateMode)
+    .then(() => app.exit(0))
+    .catch((error) => {
+      console.error(error.message);
+      if (error instanceof InstallationStateError && error.code === "UNSUPPORTED_SCHEMA") {
+        app.exit(21);
+        return;
+      }
+      app.exit(error instanceof InstallationStateError && error.code === "UNINSPECTABLE_STATE" ? 23 : 22);
+    });
+} else {
+  app.whenReady().then(() => {
+    Menu.setApplicationMenu(null);
+    createWindow();
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  });
+
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+      app.quit();
     }
   });
-});
-
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
+}
