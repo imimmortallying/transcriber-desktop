@@ -188,6 +188,9 @@
     StrCpy $installationStateProvisioningMode "provision"
 
   done:
+  ${if} ${Silent}
+    Call initializeClientInstallationGeometry
+  ${endif}
 !macroend
 
 !macro customPageAfterChangeDir
@@ -516,12 +519,16 @@
     Abort
   FunctionEnd
 
-  Function clientInstFilesPre
+  Function initializeClientInstallationGeometry
     StrCmp $asrRootDirectory "" 0 asrRootResolved
     StrCpy $asrRootDirectory "$INSTDIR"
 
     asrRootResolved:
     StrCpy $INSTDIR "$asrRootDirectory\Clients\${VERSION}"
+  FunctionEnd
+
+  Function clientInstFilesPre
+    Call initializeClientInstallationGeometry
   FunctionEnd
 !endif
 

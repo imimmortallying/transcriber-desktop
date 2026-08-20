@@ -93,8 +93,10 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /!define MUI_PAGE_CUSTOMFUNCTION_PRE clientInstFilesPre/);
   assert.match(
     installerScript,
-    /Function clientInstFilesPre[\s\S]*StrCmp \$asrRootDirectory "" 0 asrRootResolved[\s\S]*StrCpy \$asrRootDirectory "\$INSTDIR"[\s\S]*StrCpy \$INSTDIR "\$asrRootDirectory\\Clients\\\$\{VERSION\}"/,
+    /Function initializeClientInstallationGeometry[\s\S]*StrCmp \$asrRootDirectory "" 0 asrRootResolved[\s\S]*StrCpy \$asrRootDirectory "\$INSTDIR"[\s\S]*StrCpy \$INSTDIR "\$asrRootDirectory\\Clients\\\$\{VERSION\}"/,
   );
+  assert.match(customInit, /\$\{if\} \$\{Silent\}[\s\S]*Call initializeClientInstallationGeometry/);
+  assert.match(installerScript, /Function clientInstFilesPre\s+Call initializeClientInstallationGeometry\s+FunctionEnd/);
   assert.doesNotMatch(installerScript, /StrCpy \$INSTDIR "\$asrRootDirectory\\Client"/);
   assert.match(installerScript, /File \/oname=runtime\.7z/);
   assert.match(installerScript, /File \/oname=runtime-7za\.exe/);
