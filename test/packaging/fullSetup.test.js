@@ -32,6 +32,8 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.equal(packageJson.scripts["build:coordinator"], "node scripts/buildCoordinator.js");
   assert.equal(packageJson.scripts["test:launcher"], "node --test test/launcher/stableLauncher.test.js");
   assert.equal(packageJson.scripts["test:update-state"], "node --test test/update/installationState.test.js");
+  assert.equal(packageJson.scripts["test:packaging"], "node --test test/packaging/fullSetup.test.js test/packaging/fullSetupE2eCleanup.test.js");
+  assert.equal(packageJson.scripts["test:full-setup-e2e"], "node test/packaging/fullSetupE2eHarness.js");
   assert.match(packageJson.scripts["dist:win"], /^npm run build:launcher && npm run build:coordinator && npm run prepare:runtime && electron-builder/);
   assert.equal(packageJson.devDependencies["7zip-bin"], "5.2.0");
   assert.match(runtimeArchiveBuilder, /require\("7zip-bin"\)/);
