@@ -22,6 +22,13 @@ stub не хранит active/candidate/known-good, не выполняет READ
 или rollback. Registration `InstallLocation` и uninstaller временно остаются
 принадлежностью текущего Client.
 
+Standalone Coordinator уже реализован как отдельный SEA executable: при запуске
+только из validated `<root>/Coordinator/asr-coordinator.exe` geometry он
+read-only читает `InstallationState`, выбирает `activeClient`, валидирует и
+создаёт его процесс. Он не делает READY/health check, repair, known-good
+fallback или Client scan. Coordinator ещё не входит в normal root launcher,
+Full Setup или production launch path.
+
 Slice 5 добавляет root-owned foundation
 `<ASR root>/InstallationState/slot-a.json` и `slot-b.json`. Schema v1 содержит
 только `schemaVersion`, positive `generation`, равные `activeClient` и

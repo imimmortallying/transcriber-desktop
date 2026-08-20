@@ -10,6 +10,7 @@
     "build:launcher": "node scripts/buildStableLauncher.js",
     "build:coordinator": "node scripts/buildCoordinator.js",
     "test:launcher": "node --test test/launcher/stableLauncher.test.js",
+    "test:coordinator": "node --test test/coordinator/main.test.js",
     "test:coordinator-sea": "npm run build:coordinator && node --test test/coordinator/seaArtifact.test.js",
     "test:runtime": "node --test test/runtime/resolveRuntime.test.js",
     "test:update-state": "node --test test/update/installationState.test.js",

@@ -109,7 +109,9 @@ security audit и не утверждает наличие уязвимости 
   write could make installation infrastructure select or overwrite an unsafe
   Client path.
 - **Trust boundary:** per-user installation filesystem → InstallationState
-  protocol → temporary Full Setup provisioning mode and future stable coordinator.
+  protocol → temporary Full Setup provisioning mode and standalone Coordinator →
+  selected Client executable. Coordinator is not yet deployed by Full Setup or
+  used by the normal root launcher.
 - **Control:** `InstallationState` contains only two bounded JSON snapshots.
   Schema v1 accepts exact typed fields, a positive generation and equal
   active/known-good single-segment Client keys. It derives Client paths only as
@@ -120,11 +122,16 @@ security audit и не утверждает наличие уязвимости 
   bootstrap is prepared in an internal staged directory before the complete
   two-slot state is published. Full Setup is a temporary provisioning authority
   only for explicitly recognized schema-v1 corruption;
-  the future stable coordinator is the normal owner and must not reconstruct
-  state from filesystem geometry.
+  standalone Coordinator derives root only from its own validated
+  `<root>/Coordinator/asr-coordinator.exe` geometry, reads state and validates
+  only `activeClient` before process creation. It does not scan `Clients`, use
+  known-good fallback, repair state or wait for Client health/READY. State
+  consistency does not establish selected executable authenticity. Coordinator
+  remains unsigned and, like the per-user writable installation, does not resist
+  same-user local tampering after installation.
 - **Implementation:** `src/update/installationState.js`; early internal mode in
-  `src/main.js`; invocation and narrowly targeted uninstall cleanup in
-  `build/installer.nsh`.
+  `src/main.js`; `src/coordinator/main.js`; invocation and narrowly targeted
+  uninstall cleanup in `build/installer.nsh`.
 - **Verification:** `npm run test:update-state` covers schema, recovery,
   containment, state publication failure and unsupported-schema precedence.
   Full Setup preflight/uninstall integration has static coverage and still
