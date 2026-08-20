@@ -239,12 +239,14 @@ tampering; artifact authenticity/integrity verification remains future work.
   JS, второй inject-ит SEA blob в verified Node host. Их package-lock integrity
   участвует в integrity зависимостей, но не равнозначна publisher/code-signing
   trust. Текущая build chain: source JS → locked esbuild bundle → SEA blob,
-  generated using pinned verified Node host → locked postject injection →
-  `asr-coordinator.exe`. Этот generated coordinator ещё не входит в Full Setup
-  или production launch. Slice 6A не вводит Authenticode signing: coordinator
-  unsigned; verification Node build input не даёт local tamper resistance после
-  установки, а per-user writable installation tampering остаётся отдельной
-  future concern.
+  generated using pinned verified Node host → locked postject injection → local
+  fail-closed PE `WINDOWS_GUI` subsystem transform → `asr-coordinator.exe`.
+  `dist:win` заново создаёт этот final artifact до packaging, а Full Setup
+  доставляет его в root-owned `Coordinator/asr-coordinator.exe`. Slice 6A не
+  вводит Authenticode signing: coordinator unsigned; verification Node build input
+  не даёт local tamper resistance после установки, а per-user writable installation
+  tampering остаётся отдельной future concern. Future signing, if introduced,
+  belongs after SEA injection and PE transformation.
 - **Implementation:** `package-lock.json`, `pipeline/requirements-app.txt`,
   `build/installer.nsh`, `build/stable-launcher.nsi`,
   `scripts/buildStableLauncher.js`, `scripts/buildCoordinator.js` и

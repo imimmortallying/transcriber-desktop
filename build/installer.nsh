@@ -20,6 +20,10 @@
   Var runtimeCleanupExitCode
   Var runtimeCleanupStatus
   Var stableLauncherPath
+  Var coordinatorDirectory
+  Var coordinatorFinalExecutable
+  Var coordinatorStagingExecutable
+  Var coordinatorPreviousExecutable
   Var installationStateClientExecutable
   Var installationStateExitCode
   Var installationStateProvisioningMode
@@ -31,6 +35,7 @@
   Var uninstallClientsDirectory
   Var uninstallManualRuntimeCleanupEligible
   Var uninstallRuntimeRemainingPath
+  Var uninstallCoordinatorDirectory
 !endif
 
 !macro customInstallMode
@@ -43,6 +48,7 @@
     StrCpy $uninstallClientsDirectory ""
     StrCpy $uninstallManualRuntimeCleanupEligible "0"
     StrCpy $uninstallRuntimeRemainingPath ""
+    StrCpy $uninstallCoordinatorDirectory ""
 
     ${if} ${isUpdated}
       Goto asrCustomUninstallDone
@@ -62,6 +68,7 @@
     ${StdUtils.GetParentPath} $uninstallAsrRootDirectory "$uninstallClientsDirectory"
     StrCmp $uninstallAsrRootDirectory "" asrCustomUninstallLocationValidationFailure
     StrCpy $uninstallManualRuntimeCleanupEligible "1"
+    StrCpy $uninstallCoordinatorDirectory "$uninstallAsrRootDirectory\Coordinator"
 
     SetOutPath "$PLUGINSDIR"
     Delete "$uninstallAsrRootDirectory\asr-launch.exe"
@@ -69,7 +76,28 @@
     RMDir /r "$uninstallAsrRootDirectory\Runtime"
     RMDir /r "$uninstallAsrRootDirectory\Runtime.staging"
     RMDir /r "$uninstallAsrRootDirectory\Runtime.previous"
+    IfFileExists "$uninstallCoordinatorDirectory" asrCustomUninstallCoordinatorExists asrCustomUninstallCheckRuntime
 
+    asrCustomUninstallCoordinatorExists:
+      ClearErrors
+      ${GetFileAttributes} "$uninstallCoordinatorDirectory" "DIRECTORY" $0
+      IfErrors asrCustomUninstallCoordinatorRetained
+      StrCmp $0 1 +2
+        Goto asrCustomUninstallCoordinatorRetained
+      ClearErrors
+      ${GetFileAttributes} "$uninstallCoordinatorDirectory" "REPARSE_POINT" $0
+      IfErrors asrCustomUninstallCoordinatorRetained
+      StrCmp $0 1 asrCustomUninstallCoordinatorRetained
+      Delete "$uninstallCoordinatorDirectory\asr-coordinator.exe"
+      Delete "$uninstallCoordinatorDirectory\asr-coordinator.staging.exe"
+      Delete "$uninstallCoordinatorDirectory\asr-coordinator.previous.exe"
+      RMDir "$uninstallCoordinatorDirectory"
+      Goto asrCustomUninstallCheckRuntime
+
+    asrCustomUninstallCoordinatorRetained:
+      MessageBox MB_OK|MB_ICONEXCLAMATION "The ASR Coordinator directory was not removed because it is unsafe, locked, or contains foreign files.$\r$\nCoordinator directory: $uninstallCoordinatorDirectory$\r$\nClient uninstallation will continue."
+
+    asrCustomUninstallCheckRuntime:
     IfFileExists "$uninstallAsrRootDirectory\Runtime\NUL" asrCustomUninstallRuntimeRemaining asrCustomUninstallCheckStaging
 
     asrCustomUninstallCheckStaging:
@@ -299,6 +327,190 @@
     Return
   FunctionEnd
 
+  Function coordinatorDirectoryIsSafe
+    ClearErrors
+    ${GetFileAttributes} "$0" "DIRECTORY" $1
+    IfErrors coordinatorDirectoryUnsafe
+    StrCmp $1 1 coordinatorDirectoryCheckReparse coordinatorDirectoryUnsafe
+
+    coordinatorDirectoryCheckReparse:
+    ClearErrors
+    ${GetFileAttributes} "$0" "REPARSE_POINT" $1
+    IfErrors coordinatorDirectoryUnsafe
+    StrCmp $1 1 coordinatorDirectoryUnsafe coordinatorDirectorySafe
+
+    coordinatorDirectoryUnsafe:
+      SetErrors
+      Return
+
+    coordinatorDirectorySafe:
+      ClearErrors
+      Return
+  FunctionEnd
+
+  Function coordinatorFileIsSafe
+    ClearErrors
+    ${GetFileAttributes} "$0" "DIRECTORY" $1
+    IfErrors coordinatorFileUnsafe
+    StrCmp $1 1 coordinatorFileUnsafe coordinatorFileCheckReparse
+
+    coordinatorFileCheckReparse:
+    ClearErrors
+    ${GetFileAttributes} "$0" "REPARSE_POINT" $1
+    IfErrors coordinatorFileUnsafe
+    StrCmp $1 1 coordinatorFileUnsafe coordinatorFileSafe
+
+    coordinatorFileUnsafe:
+      SetErrors
+      Return
+
+    coordinatorFileSafe:
+      ClearErrors
+      Return
+  FunctionEnd
+
+  Function recoverCoordinatorDeployment
+    IfFileExists "$coordinatorPreviousExecutable" coordinatorRecoveryHasPrevious coordinatorRecoveryCheckFinal
+
+    coordinatorRecoveryHasPrevious:
+      StrCpy $0 "$coordinatorPreviousExecutable"
+      Call coordinatorFileIsSafe
+      IfErrors coordinatorRecoveryFailure
+      IfFileExists "$coordinatorFinalExecutable" coordinatorRecoveryCommitted coordinatorRecoveryRestorePrevious
+
+    coordinatorRecoveryCommitted:
+      StrCpy $0 "$coordinatorFinalExecutable"
+      Call coordinatorFileIsSafe
+      IfErrors coordinatorRecoveryFailure
+      ClearErrors
+      Delete "$coordinatorPreviousExecutable"
+      IfErrors coordinatorRecoveryFailure
+      Goto coordinatorRecoveryCheckFinal
+
+    coordinatorRecoveryRestorePrevious:
+      Rename "$coordinatorPreviousExecutable" "$coordinatorFinalExecutable"
+      IfErrors coordinatorRecoveryFailure
+
+    coordinatorRecoveryCheckFinal:
+      IfFileExists "$coordinatorFinalExecutable" coordinatorRecoveryValidateFinal coordinatorRecoveryCheckStaging
+
+    coordinatorRecoveryValidateFinal:
+      StrCpy $0 "$coordinatorFinalExecutable"
+      Call coordinatorFileIsSafe
+      IfErrors coordinatorRecoveryFailure
+
+    coordinatorRecoveryCheckStaging:
+      IfFileExists "$coordinatorStagingExecutable" coordinatorRecoveryHasStaging coordinatorRecoveryDone
+
+    coordinatorRecoveryHasStaging:
+      StrCpy $0 "$coordinatorStagingExecutable"
+      Call coordinatorFileIsSafe
+      IfErrors coordinatorRecoveryFailure
+      IfFileExists "$coordinatorFinalExecutable" coordinatorRecoveryDiscardStaging coordinatorRecoveryPromoteStaging
+
+    coordinatorRecoveryDiscardStaging:
+      ClearErrors
+      Delete "$coordinatorStagingExecutable"
+      IfErrors coordinatorRecoveryFailure
+      Goto coordinatorRecoveryDone
+
+    coordinatorRecoveryPromoteStaging:
+      Rename "$coordinatorStagingExecutable" "$coordinatorFinalExecutable"
+      IfErrors coordinatorRecoveryFailure
+      StrCpy $0 "$coordinatorFinalExecutable"
+      Call coordinatorFileIsSafe
+      IfErrors coordinatorRecoveryFailure
+
+    coordinatorRecoveryDone:
+      ClearErrors
+      Return
+
+    coordinatorRecoveryFailure:
+      SetErrors
+      Return
+  FunctionEnd
+
+  Function deployCoordinator
+    StrCpy $coordinatorDirectory "$asrRootDirectory\Coordinator"
+    StrCpy $coordinatorFinalExecutable "$coordinatorDirectory\asr-coordinator.exe"
+    StrCpy $coordinatorStagingExecutable "$coordinatorDirectory\asr-coordinator.staging.exe"
+    StrCpy $coordinatorPreviousExecutable "$coordinatorDirectory\asr-coordinator.previous.exe"
+
+    StrCpy $0 "$asrRootDirectory"
+    Call coordinatorDirectoryIsSafe
+    IfErrors coordinatorDeploymentFunctionFailure
+    IfFileExists "$coordinatorDirectory" coordinatorDeploymentExistingDirectory coordinatorDeploymentCreateDirectory
+
+    coordinatorDeploymentCreateDirectory:
+      SetOutPath "$coordinatorDirectory"
+      IfErrors coordinatorDeploymentFunctionFailure
+
+    coordinatorDeploymentExistingDirectory:
+      StrCpy $0 "$coordinatorDirectory"
+      Call coordinatorDirectoryIsSafe
+      IfErrors coordinatorDeploymentFunctionFailure
+      Call recoverCoordinatorDeployment
+      IfErrors coordinatorDeploymentFunctionFailure
+      IfFileExists "$coordinatorStagingExecutable" coordinatorDeploymentFunctionFailure
+
+      SetOutPath "$coordinatorDirectory"
+      ClearErrors
+      File /oname=asr-coordinator.staging.exe "${BUILD_RESOURCES_DIR}\coordinator\asr-coordinator.exe"
+      IfErrors coordinatorDeploymentStagingFailure
+      IfFileExists "$coordinatorStagingExecutable" coordinatorDeploymentStaged coordinatorDeploymentStagingFailure
+
+    coordinatorDeploymentStaged:
+      StrCpy $0 "$coordinatorStagingExecutable"
+      Call coordinatorFileIsSafe
+      IfErrors coordinatorDeploymentStagingFailure
+      IfFileExists "$coordinatorFinalExecutable" coordinatorDeploymentBackupExisting coordinatorDeploymentPromote
+
+    coordinatorDeploymentBackupExisting:
+      StrCpy $0 "$coordinatorFinalExecutable"
+      Call coordinatorFileIsSafe
+      IfErrors coordinatorDeploymentStagingFailure
+      IfFileExists "$coordinatorPreviousExecutable" coordinatorDeploymentStagingFailure
+      Rename "$coordinatorFinalExecutable" "$coordinatorPreviousExecutable"
+      IfErrors coordinatorDeploymentBackupFailure
+
+    coordinatorDeploymentPromote:
+      Rename "$coordinatorStagingExecutable" "$coordinatorFinalExecutable"
+      IfErrors coordinatorDeploymentPromotionFailure
+      StrCpy $0 "$coordinatorFinalExecutable"
+      Call coordinatorFileIsSafe
+      IfErrors coordinatorDeploymentFunctionFailure
+      IfFileExists "$coordinatorPreviousExecutable" 0 coordinatorDeploymentDone
+      ClearErrors
+      Delete "$coordinatorPreviousExecutable"
+
+    coordinatorDeploymentDone:
+      ClearErrors
+      Return
+
+    coordinatorDeploymentStagingFailure:
+      ClearErrors
+      Delete "$coordinatorStagingExecutable"
+      SetErrors
+      Return
+
+    coordinatorDeploymentBackupFailure:
+      ClearErrors
+      Delete "$coordinatorStagingExecutable"
+      SetErrors
+      Return
+
+    coordinatorDeploymentPromotionFailure:
+      IfFileExists "$coordinatorPreviousExecutable" 0 coordinatorDeploymentFunctionFailure
+      Rename "$coordinatorPreviousExecutable" "$coordinatorFinalExecutable"
+      IfErrors coordinatorDeploymentFunctionFailure
+      ClearErrors
+      Delete "$coordinatorStagingExecutable"
+
+    coordinatorDeploymentFunctionFailure:
+      SetErrors
+      Return
+  FunctionEnd
+
   Function clientDirectoryPre
     StrCmp $isExistingClientInstallation "1" 0 +2
     Abort
@@ -423,6 +635,8 @@
     Quit
 
   runtimeInstalled:
+    Call deployCoordinator
+    IfErrors coordinatorDeploymentFailure
     SetOutPath "$asrRootDirectory"
     File /oname=asr-launch.exe "${BUILD_RESOURCES_DIR}\stable-launcher.exe"
     StrCpy $stableLauncherPath "$asrRootDirectory\asr-launch.exe"
@@ -430,6 +644,11 @@
 
   stableLauncherMissing:
     MessageBox MB_OK|MB_ICONSTOP "ASR installation completed without its stable launcher. Run Full Setup again to repair the installation."
+    Quit
+
+  coordinatorDeploymentFailure:
+    Call cleanupFailedClientInstall
+    MessageBox MB_OK|MB_ICONSTOP "ASR Coordinator deployment failed.$\r$\nCoordinator directory: $asrRootDirectory\Coordinator$\r$\nA previous Coordinator was left unchanged or restored when possible.$\r$\n$runtimeCleanupStatus"
     Quit
 
   stableLauncherInstalled:

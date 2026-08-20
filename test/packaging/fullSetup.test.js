@@ -10,6 +10,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   const installerScript = await readFile(path.join(projectRoot, "build", "installer.nsh"), "utf8");
   const stableLauncherSource = await readFile(path.join(projectRoot, "build", "stable-launcher.nsi"), "utf8");
   const stableLauncherBuilder = await readFile(path.join(projectRoot, "scripts", "buildStableLauncher.js"), "utf8");
+  const coordinatorBuilder = await readFile(path.join(projectRoot, "scripts", "buildCoordinator.js"), "utf8");
   const runtimeArchiveBuilder = await readFile(path.join(projectRoot, "scripts", "buildRuntimeArchive.js"), "utf8");
   const mainSource = await readFile(path.join(projectRoot, "src", "main.js"), "utf8");
   const customInit = installerScript.slice(
@@ -28,9 +29,10 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.equal("extraResources" in packageJson.build, false);
   assert.equal(packageJson.scripts["prepare:runtime"], "node scripts/buildRuntimeArchive.js");
   assert.equal(packageJson.scripts["build:launcher"], "node scripts/buildStableLauncher.js");
+  assert.equal(packageJson.scripts["build:coordinator"], "node scripts/buildCoordinator.js");
   assert.equal(packageJson.scripts["test:launcher"], "node --test test/launcher/stableLauncher.test.js");
   assert.equal(packageJson.scripts["test:update-state"], "node --test test/update/installationState.test.js");
-  assert.match(packageJson.scripts["dist:win"], /^npm run build:launcher && npm run prepare:runtime && electron-builder/);
+  assert.match(packageJson.scripts["dist:win"], /^npm run build:launcher && npm run build:coordinator && npm run prepare:runtime && electron-builder/);
   assert.equal(packageJson.devDependencies["7zip-bin"], "5.2.0");
   assert.match(runtimeArchiveBuilder, /require\("7zip-bin"\)/);
   assert.match(runtimeArchiveBuilder, /getDirectorySize\(stagingDirectory\)/);
@@ -43,6 +45,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(stableLauncherBuilder, /VKMiizYdmNdJOWpRGz4trl4lD\+\+BvYP2irAXpMilheUP0pc93iKlWAoP843Vlraj8YG19CVn0j\+dCo\/hURz9\+Q==/);
   assert.doesNotMatch(stableLauncherBuilder, /AppData|LOCALAPPDATA|ELECTRON_BUILDER_NSIS_DIR|app-builder-lib/);
   assert.match(stableLauncherSource, /StrCpy \$installationRoot "\$EXEDIR"/);
+  assert.match(coordinatorBuilder, /transformToWindowsGuiExecutable\(stagedCoordinatorOutput\)/);
 
   assert.match(installerScript, /!include "\$\{BUILD_RESOURCES_DIR\}\\runtime-size\.nsh"/);
   assert.match(installerScript, /SectionGetSize 0 \$0/);
@@ -69,6 +72,11 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(customUninstall, /\$\{GetFileName\} "\$INSTDIR" \$1[\s\S]*StrCmp \$1 "\$\{VERSION\}" 0 asrCustomUninstallLocationValidationFailure/);
   assert.match(customUninstall, /\$\{StdUtils\.GetParentPath\} \$uninstallClientsDirectory "\$INSTDIR"[\s\S]*\$\{GetFileName\} "\$uninstallClientsDirectory" \$1[\s\S]*StrCmp \$1 "Clients" 0 asrCustomUninstallLocationValidationFailure[\s\S]*\$\{StdUtils\.GetParentPath\} \$uninstallAsrRootDirectory "\$uninstallClientsDirectory"/);
   assert.match(customUninstall, /StrCpy \$uninstallManualRuntimeCleanupEligible "1"[\s\S]*Delete "\$uninstallAsrRootDirectory\\asr-launch\.exe"/);
+  assert.match(customUninstall, /StrCpy \$uninstallCoordinatorDirectory "\$uninstallAsrRootDirectory\\Coordinator"/);
+  assert.match(customUninstall, /\$\{if\} \$\{isUpdated\}[\s\S]*Goto asrCustomUninstallDone/);
+  assert.match(customUninstall, /\$\{GetFileAttributes\} "\$uninstallCoordinatorDirectory" "DIRECTORY"[\s\S]*\$\{GetFileAttributes\} "\$uninstallCoordinatorDirectory" "REPARSE_POINT"/);
+  assert.match(customUninstall, /Delete "\$uninstallCoordinatorDirectory\\asr-coordinator\.exe"[\s\S]*Delete "\$uninstallCoordinatorDirectory\\asr-coordinator\.staging\.exe"[\s\S]*Delete "\$uninstallCoordinatorDirectory\\asr-coordinator\.previous\.exe"[\s\S]*RMDir "\$uninstallCoordinatorDirectory"/);
+  assert.doesNotMatch(customUninstall, /RMDir \/r "\$uninstallCoordinatorDirectory"/);
   assert.match(customUninstall, /Delete "\$uninstallAsrRootDirectory\\asr-launch\.exe"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\InstallationState"/);
   assert.ok(
     customUninstall.indexOf("Goto asrCustomUninstallDone") <
@@ -121,8 +129,14 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.doesNotMatch(installerScript, /RMDir \/r "\$INSTDIR\\\.\.\\Runtime"/);
   assert.match(
     installerScript,
-    /runtimeInstalled:[\s\S]*SetOutPath "\$asrRootDirectory"[\s\S]*File \/oname=asr-launch\.exe "\$\{BUILD_RESOURCES_DIR\}\\stable-launcher\.exe"[\s\S]*StrCpy \$stableLauncherPath "\$asrRootDirectory\\asr-launch\.exe"/,
+    /runtimeInstalled:[\s\S]*Call deployCoordinator[\s\S]*SetOutPath "\$asrRootDirectory"[\s\S]*File \/oname=asr-launch\.exe "\$\{BUILD_RESOURCES_DIR\}\\stable-launcher\.exe"[\s\S]*StrCpy \$stableLauncherPath "\$asrRootDirectory\\asr-launch\.exe"/,
   );
+  assert.match(installerScript, /Function deployCoordinator[\s\S]*File \/oname=asr-coordinator\.staging\.exe "\$\{BUILD_RESOURCES_DIR\}\\coordinator\\asr-coordinator\.exe"/);
+  assert.match(installerScript, /Function deployCoordinator[\s\S]*Call coordinatorDirectoryIsSafe[\s\S]*Call recoverCoordinatorDeployment/);
+  assert.match(installerScript, /Function deployCoordinator[\s\S]*Rename "\$coordinatorFinalExecutable" "\$coordinatorPreviousExecutable"[\s\S]*Rename "\$coordinatorStagingExecutable" "\$coordinatorFinalExecutable"/);
+  assert.match(installerScript, /coordinatorDeploymentPromotionFailure:[\s\S]*Rename "\$coordinatorPreviousExecutable" "\$coordinatorFinalExecutable"/);
+  assert.match(installerScript, /Function recoverCoordinatorDeployment[\s\S]*coordinatorRecoveryRestorePrevious:[\s\S]*Rename "\$coordinatorPreviousExecutable" "\$coordinatorFinalExecutable"/);
+  assert.match(installerScript, /Function coordinatorFileIsSafe[\s\S]*"DIRECTORY"[\s\S]*"REPARSE_POINT"/);
   assert.match(installerScript, /CreateShortCut "\$newDesktopLink" "\$stableLauncherPath"/);
   assert.match(installerScript, /CreateShortCut "\$newStartMenuLink" "\$stableLauncherPath"/);
   assert.match(installerScript, /Function preflightInstallationState[\s\S]*IfFileExists "\$asrRootDirectory\\InstallationState\\NUL" 0 installationStatePreflightDone[\s\S]*StrCpy \$installationStateExistedBeforeInstall "1"[\s\S]*--asr-installation-state=inspect[\s\S]*StrCmp \$installationStateExitCode "21" installationStatePreflightUnsupported installationStatePreflightCheckUninspectable[\s\S]*StrCmp \$installationStateExitCode "23" installationStatePreflightUninspectable/);

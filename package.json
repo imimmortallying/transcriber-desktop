@@ -18,7 +18,7 @@
     "prepare:runtime": "node scripts/buildRuntimeArchive.js",
     "dist:client": "electron-builder --win --x64 --dir && node scripts/buildClientArtifact.js",
     "test:client-artifact": "npm run dist:client && node --test test/packaging/clientArtifact.test.js",
-    "dist:win": "npm run build:launcher && npm run prepare:runtime && electron-builder --win nsis --x64"
+    "dist:win": "npm run build:launcher && npm run build:coordinator && npm run prepare:runtime && electron-builder --win nsis --x64"
   },
   "build": {
     "appId": "ru.sber.local-asr",

@@ -20,7 +20,7 @@ release payload, который в будущем можно получить on
 directory без повторной доставки Runtime.
 
 Full Setup уже создаёт чистый versioned layout `Clients/<client-version>` для
-своего Client и root-level stable launch stub. Публикация, acquisition,
+своего Client и root-level stable launcher с Coordinator. Публикация, acquisition,
 authenticity verification, staging Client artifact, activation, rollback и READY
 ещё не реализованы.
 
@@ -38,11 +38,13 @@ resources/
 ```
 
 `npm run dist:win` создаёт Full Offline NSIS Setup `*.exe` в `dist/`. Он содержит
-Client и Runtime, но устанавливает их физически раздельно:
+Client, Runtime и Coordinator, но устанавливает их физически раздельно:
 
 ```text
 <ASR root>/
   asr-launch.exe          # stable launch stub; not a versioned Client
+  Coordinator/            # root-owned stable infrastructure
+    asr-coordinator.exe
   InstallationState/      # root-owned schema-v1 snapshots
     slot-a.json
     slot-b.json
@@ -59,41 +61,42 @@ Client и Runtime, но устанавливает их физически ра�
 ```
 
 Перед Full Setup `npm run dist:win` собирает root-level `asr-launch.exe` из
-`build/stable-launcher.nsi`. `npm run build:launcher` получает pinned NSIS 3.0.4.1
+`build/stable-launcher.nsi` и final GUI-subsystem SEA Coordinator из
+`scripts/buildCoordinator.js`. `npm run build:launcher` получает pinned NSIS 3.0.4.1
 из electron-builder-binaries по repository-owned URL и проверяет его SHA-512 до
 компиляции; machine-specific electron-builder cache не является входом сборки.
 
 Поддерживается только per-user установка. NSIS сохраняет собственную страницу
 выбора каталога и однозначно создаёт в выбранном root `Clients/<client version>`
-и `Runtime`; выбор per-machine не предлагается. Client является independently
+и `Runtime` и `Coordinator`; выбор per-machine не предлагается. Client является independently
 replaceable component: служебный uninstall с `--updated` удаляет только текущий
-versioned Client, а Runtime остаётся. Обычный ручной uninstall удаляет этот Client
-вместе с sibling `Runtime`, `Runtime.staging` и `Runtime.previous`; затем пытается
-без рекурсии удалить пустые `Clients` и ASR root. Runtime installer, Runtime
+versioned Client, а Runtime и Coordinator остаются. Обычный ручной uninstall удаляет этот Client
+вместе с sibling `Runtime`, `Runtime.staging`, `Runtime.previous` и known Coordinator files; затем пытается
+без рекурсии удалить пустые `Coordinator`, `Clients` и ASR root. Runtime installer, Runtime
 auto-update и Client updater пока не реализованы.
 
-Full Setup теперь размещает standalone `asr-launch.exe` непосредственно в ASR root.
-Desktop и Start Menu shortcuts указывают на него, а не на
-`Clients/<client version>/local-asr-prototype.exe`. Это намеренно минимальный
-stable launch stub: он выводит root из собственного расположения, временно принимает
-ровно один каталог в `Clients` и запускает только его ожидаемый Client executable.
-Он не хранит active/candidate/known-good state, не выполняет READY, verification,
-activation, rollback или Runtime operations.
+Full Setup размещает standalone `asr-launch.exe` непосредственно в ASR root и
+`Coordinator/asr-coordinator.exe` рядом с ним. Desktop и Start Menu shortcuts
+указывают на launcher, а не на `Clients/<client version>/local-asr-prototype.exe`.
+Launcher выводит root из собственного расположения, валидирует только fixed
+Coordinator target и не принимает Client selection. Coordinator read-only читает
+`InstallationState`, запускает только validated `activeClient` и не выполняет READY,
+verification, activation, rollback или Runtime operations.
 
 Windows registration `InstallLocation` и штатный electron-builder uninstaller всё
 ещё временно принадлежат текущему versioned Client. Service uninstall с `--updated`
-сохраняет root-level launcher вместе с Runtime. Обычный ручной uninstall удаляет
-launcher только после существующей structural validation зарегистрированного
+сохраняет root-level launcher, Coordinator вместе с Runtime. Обычный ручной uninstall удаляет
+launcher и known Coordinator files только после существующей structural validation зарегистрированного
 `Clients/<client version>` layout; затем штатный uninstall удаляет shortcuts и Client.
 
-После успешной установки Client, Runtime, launcher и shortcuts Setup запускает
+После успешной установки Client, Runtime, Coordinator, launcher и shortcuts Setup запускает
 internal non-UI mode установленного Client. Он временно provision/reconcile-ит
 root-owned `InstallationState`; normal Electron window не открывается. Before
 replacement existing registered Client Setup read-only проверяет state тем же
 protocol. Unknown/newer schema, oversized/uninspectable state или duplicate JSON
-keys останавливают Setup до replacement и сохраняют Client, Runtime, launcher,
+keys останавливают Setup до replacement и сохраняют Client, Runtime, Coordinator, launcher,
 shortcuts, registry и state bytes. NSIS не парсит JSON,
-а launcher по-прежнему принимает ровно один Client.
+а launcher по-прежнему валидирует только fixed Coordinator target.
 
 `Runtime.staging` и `Runtime.previous` ниже относятся только к реализованной
 доставке Runtime внутри Full Offline Setup. Они не задают будущий lifecycle
@@ -102,7 +105,7 @@ Client-only update: его side-by-side candidate, activation, READY и rollback
 
 Перед ручным sibling cleanup uninstaller сверяет `$INSTDIR` с current-user
 `InstallLocation`, version leaf с `${VERSION}` и структурный сегмент `Clients`.
-Только затем он выводит ASR root; при несовпадении Runtime не удаляется, а Client
+Только затем он выводит ASR root; при несовпадении Runtime и Coordinator не удаляются, а Client
 cleanup продолжается. Runtime cleanup является best-effort: при заблокированных
 файлах пользователь получает предупреждение с ASR root и оставшимся путём.
 Manual uninstall после той же ownership validation узко удаляет
@@ -148,20 +151,28 @@ previous Client: штатный upgrade flow уже заменил Client до R
 
 ## Lifecycle Full Setup и удаления
 
-| Сценарий | Client | Runtime и staging | Пользовательские данные |
+| Сценарий | Client | Runtime, Coordinator и staging | Пользовательские данные |
 | --- | --- | --- | --- |
-| Clean install | Создаётся в `<root>/Clients/<client version>`; затем internal provisioning mode создаёт две identical generation-1 state snapshots. | Full Setup распаковывает Runtime в `Runtime.staging`, проверяет manifest и продвигает его в `<root>/Runtime`. | Не создаются и не удаляются установщиком. |
-| Full Setup reinstall | Заменяется штатным install flow; same-version valid state сохраняется, newer Full Setup provision-ит steady v1 state без activation semantics. | Новый payload сначала проходит staging; существующий `Runtime` временно становится `Runtime.previous`, а после успешного promotion удаляется. | Сохраняются. |
-| Runtime deployment failure | Compensating cleanup удаляет новый Client, shortcuts и регистрацию штатным uninstaller; launcher, существовавший до reinstall, service uninstall не удаляет. | Existing `Runtime`, `Runtime.previous` и диагностический `Runtime.staging` не удаляются. При reinstall previous Client автоматически не восстанавливается. | Сохраняются. |
-| Manual user uninstall | Штатно удаляется текущий versioned Client; root-level launcher и InstallationState удаляются только после validation ownership layout. | Best-effort удаляются sibling `Runtime`, `Runtime.staging` и `Runtime.previous`; затем пустые `Clients` и root удаляются только без рекурсии. | Сохраняются. |
-| Service uninstall | В служебной uninstall-фазе удаляет только текущий versioned Client. | Не затрагивает launcher, InstallationState, Runtime, staging и backup. | Сохраняются. |
-| Full Setup repair | Existing Client допускается без проверки здоровья Runtime. | Full Setup заново доставляет Runtime; это repair отсутствующего или повреждённого Runtime. | Сохраняются. |
+| Clean install | Создаётся в `<root>/Clients/<client version>`; затем internal provisioning mode создаёт две identical generation-1 state snapshots. | Full Setup распаковывает Runtime в `Runtime.staging`, проверяет manifest и продвигает его в `<root>/Runtime`; затем staged Coordinator становится `<root>/Coordinator/asr-coordinator.exe`. | Не создаются и не удаляются установщиком. |
+| Full Setup reinstall | Заменяется штатным install flow; same-version valid state сохраняется, newer Full Setup provision-ит steady v1 state без activation semantics. | Новый Runtime проходит staging/promotion; Coordinator replacement сохраняет old final до staged promotion и восстанавливает его при failure where possible. | Сохраняются. |
+| Runtime or Coordinator deployment failure | Compensating cleanup удаляет новый Client, shortcuts и регистрацию штатным uninstaller; previously existing launcher, Runtime и Coordinator service uninstall не удаляет. | Existing Runtime и existing Coordinator остаются unchanged before their respective promotion; interrupted recognized Coordinator protocol files are recovered where safely possible. При reinstall previous Client автоматически не восстанавливается. | Сохраняются. |
+| Manual user uninstall | Штатно удаляется текущий versioned Client; root-level launcher и InstallationState удаляются только после validation ownership layout. | Best-effort удаляются sibling Runtime files и only known Coordinator protocol files; `Coordinator`, `Clients` и root удаляются только если пусты, без рекурсии. | Сохраняются. |
+| Service uninstall | В служебной uninstall-фазе удаляет только текущий versioned Client. | Не затрагивает launcher, Coordinator, InstallationState, Runtime, staging и backup. | Сохраняются. |
+| Full Setup repair | Existing Client допускается без проверки здоровья Runtime или Coordinator. | Full Setup заново доставляет Runtime и Coordinator; это repair отсутствующего или повреждённого owned infrastructure. | Сохраняются. |
 | Legacy monolith | Не изменяется автоматически. | Setup блокируется до ручного удаления legacy приложения; последующий Setup — clean install. | Сохраняются при удалении legacy приложения. |
 
 `Runtime.staging` — временная кандидатная копия. `Runtime.previous` — временный
 backup уже рабочего Runtime на время promotion. Эти директории не считаются
 пользовательскими данными: при обычном uninstall они удаляются вместе с Runtime,
 а при ошибке deployment сохраняются для диагностики и защиты уже рабочего Runtime.
+
+Coordinator replacement uses only reserved files inside a validated normal
+`Coordinator` directory: `asr-coordinator.staging.exe` is prepared before an
+existing final executable is renamed to `asr-coordinator.previous.exe`; failed
+promotion restores that previous file where possible. A subsequent Full Setup
+recovers regular recognized staging/previous residue deterministically, but this
+does not claim hard-power-loss atomicity. Normal uninstall deletes only these known
+Coordinator files and removes `Coordinator` only when it is empty.
 
 State provisioning failure после fresh bootstrap удаляет только state artifacts,
 созданные этой попыткой. Если `InstallationState` существовал до repair/reconcile,
