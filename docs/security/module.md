@@ -69,7 +69,7 @@ security audit и не утверждает наличие уязвимости 
 - **Threat:** отсутствующий, повреждённый или несовместимый Runtime мог бы
   привести к запуску неподходящего subprocess либо неясной ошибке во время
   распознавания.
-- **Trust boundary:** stable launcher → ожидаемый локальный Client → локальный ASR Runtime.
+- **Trust boundary:** stable launcher → fixed Coordinator → selected локальный Client → локальный ASR Runtime.
 - **Control:** `src/runtime/resolveRuntime.js` определяет Runtime только из
   application-controlled packaged/dev layout: в packaged-режиме он получает
   `installationRoot` и выводит shared `<installationRoot>/Runtime`, а
@@ -108,10 +108,10 @@ security audit и не утверждает наличие уязвимости 
   directory names, reparse-point escape, unknown schema downgrade, or a partial
   write could make installation infrastructure select or overwrite an unsafe
   Client path.
-- **Trust boundary:** per-user installation filesystem → InstallationState
-  protocol → temporary Full Setup provisioning mode and standalone Coordinator →
-  selected Client executable. Coordinator is not yet deployed by Full Setup or
-  used by the normal root launcher.
+- **Trust boundary:** per-user installation filesystem → root launcher bootstrap
+  → fixed Coordinator → InstallationState protocol → selected Client executable.
+  Full Setup remains a temporary provisioning authority but does not yet deploy
+  Coordinator, so this remains an intentional temporary integration gap.
 - **Control:** `InstallationState` contains only two bounded JSON snapshots.
   Schema v1 accepts exact typed fields, a positive generation and equal
   active/known-good single-segment Client keys. It derives Client paths only as
@@ -121,8 +121,10 @@ security audit и не утверждает наличие уязвимости 
   keys in either slot win over otherwise valid v1 and remain read-only. Initial
   bootstrap is prepared in an internal staged directory before the complete
   two-slot state is published. Full Setup is a temporary provisioning authority
-  only for explicitly recognized schema-v1 corruption;
-  standalone Coordinator derives root only from its own validated
+  only for explicitly recognized schema-v1 corruption; root launcher derives its
+  root only from `$EXEDIR`, validates the fixed Coordinator target for expected
+  type and reparse points, and passes no arguments. Coordinator derives root only
+  from its own validated
   `<root>/Coordinator/asr-coordinator.exe` geometry, reads state and validates
   only `activeClient` before process creation. It does not scan `Clients`, use
   known-good fallback, repair state or wait for Client health/READY. State

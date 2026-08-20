@@ -15,19 +15,21 @@ stub. Получение, verification, staging, activation и запуск по
 следующего milestone.
 
 В текущем Full Setup чистая Client installation размещается в
-`<ASR root>/Clients/<client version>`. Также реализован root-level stable launch
-stub: Windows shortcuts указывают на него, а он временно запускает единственный
-каталог Client под `Clients`. Это ещё не является реализацией Client update lifecycle:
-stub не хранит active/candidate/known-good, не выполняет READY, activation, recovery
-или rollback. Registration `InstallLocation` и uninstaller временно остаются
-принадлежностью текущего Client.
+`<ASR root>/Clients/<client version>`. Windows shortcuts указывают на root-level
+stable launcher: он валидирует только fixed
+`<ASR root>/Coordinator/asr-coordinator.exe` target и передаёт ему запуск. Launcher
+не сканирует `Clients` и не выбирает версию. Это ещё не является реализацией Client
+update lifecycle: launcher не хранит active/candidate/known-good, не выполняет READY,
+activation, recovery или rollback. Registration `InstallLocation` и uninstaller
+временно остаются принадлежностью текущего Client.
 
 Standalone Coordinator уже реализован как отдельный SEA executable: при запуске
 только из validated `<root>/Coordinator/asr-coordinator.exe` geometry он
 read-only читает `InstallationState`, выбирает `activeClient`, валидирует и
 создаёт его процесс. Он не делает READY/health check, repair, known-good
-fallback или Client scan. Coordinator ещё не входит в normal root launcher,
-Full Setup или production launch path.
+fallback или Client scan. Root launcher теперь вызывает Coordinator, но Full Setup
+ещё не доставляет его: это намеренный временный integration gap Slice 6C, а не
+release-ready Full Setup launch path.
 
 Slice 5 добавляет root-owned foundation
 `<ASR root>/InstallationState/slot-a.json` и `slot-b.json`. Schema v1 содержит
