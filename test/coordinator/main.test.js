@@ -92,7 +92,7 @@ test("Coordinator launches only selected active Client after spawn confirmation"
       [],
       {
         cwd: path.join(root, "Clients", "0.1.0"),
-        detached: false,
+        detached: true,
         shell: false,
         stdio: "ignore",
         windowsHide: true,

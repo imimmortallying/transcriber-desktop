@@ -5,7 +5,11 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const test = require("node:test");
 const { coordinatorOutput } = require("../../scripts/buildCoordinator");
+const { getNsisCompiler, run } = require("../../scripts/buildStableLauncher");
 const { CoordinatorExitCode } = require("../../src/coordinator/main");
+
+const projectRoot = path.resolve(__dirname, "../..");
+const fakeClientSource = path.join(__dirname, "fakeClient.nsi");
 
 function runCoordinator(executablePath) {
   const windowsDirectory = process.env.SystemRoot || process.env.WINDIR;
@@ -43,6 +47,31 @@ function stateForVersion(version) {
   });
 }
 
+async function buildFakeClient(outputPath) {
+  const compilerPath = await getNsisCompiler();
+  await run(compilerPath, [
+    "-V2",
+    "-INPUTCHARSET",
+    "UTF8",
+    `-DOUTPUT_PATH=${outputPath}`,
+    fakeClientSource,
+  ], { cwd: projectRoot });
+}
+
+async function waitForMarker(markerPath) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      return await readFile(markerPath, "utf8");
+    } catch (error) {
+      if (!error || error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("Selected Client did not create its launch marker.");
+}
+
 test("SEA coordinator reads shared state from installed geometry without Node in PATH", async () => {
   const outputInfo = await stat(coordinatorOutput);
   assert.equal(outputInfo.isFile(), true);
@@ -67,6 +96,51 @@ test("SEA coordinator reads shared state from installed geometry without Node in
     assert.equal(result.code, CoordinatorExitCode.SELECTED_CLIENT_UNAVAILABLE);
     assert.equal(result.stdout, "");
     assert.equal(result.stderr, "");
+    assert.deepEqual(await Promise.all([
+      readFile(path.join(stateDirectory, "slot-a.json"), "utf8"),
+      readFile(path.join(stateDirectory, "slot-b.json"), "utf8"),
+    ]), before);
+  } finally {
+    await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});
+
+test("SEA coordinator launches only the selected normal Windows Client without Node in PATH", async () => {
+  const outputInfo = await stat(coordinatorOutput);
+  assert.equal(outputInfo.isFile(), true);
+
+  const root = await mkdtemp(path.join(os.tmpdir(), "asr-coordinator-sea-"));
+  try {
+    const coordinatorDirectory = path.join(root, "Coordinator");
+    const installedCoordinator = path.join(coordinatorDirectory, "asr-coordinator.exe");
+    const stateDirectory = path.join(root, "InstallationState");
+    const selectedClientDirectory = path.join(root, "Clients", "0.2.0");
+    const selectedClientExecutable = path.join(selectedClientDirectory, "local-asr-prototype.exe");
+    const selectedMarker = path.join(selectedClientDirectory, "CLIENT_LAUNCHED.txt");
+    const state = `${stateForVersion("0.2.0")}\n`;
+    await Promise.all([
+      mkdir(coordinatorDirectory, { recursive: true }),
+      mkdir(stateDirectory, { recursive: true }),
+      mkdir(path.join(root, "Clients", "0.1.0"), { recursive: true }),
+      mkdir(selectedClientDirectory, { recursive: true }),
+    ]);
+    await copyFile(coordinatorOutput, installedCoordinator);
+    await buildFakeClient(selectedClientExecutable);
+    await writeFile(path.join(stateDirectory, "slot-a.json"), state, "utf8");
+    await writeFile(path.join(stateDirectory, "slot-b.json"), state, "utf8");
+    const before = await Promise.all([
+      readFile(path.join(stateDirectory, "slot-a.json"), "utf8"),
+      readFile(path.join(stateDirectory, "slot-b.json"), "utf8"),
+    ]);
+
+    const result = await runCoordinator(installedCoordinator);
+    assert.equal(result.code, CoordinatorExitCode.SUCCESS);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, "");
+    assert.equal(await waitForMarker(selectedMarker), "selected Client launched\r\n");
+    await assert.rejects(readFile(path.join(root, "Clients", "0.1.0", "CLIENT_LAUNCHED.txt"), "utf8"), {
+      code: "ENOENT",
+    });
     assert.deepEqual(await Promise.all([
       readFile(path.join(stateDirectory, "slot-a.json"), "utf8"),
       readFile(path.join(stateDirectory, "slot-b.json"), "utf8"),

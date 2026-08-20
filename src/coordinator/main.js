@@ -96,7 +96,7 @@ function launchClient(client, spawnFn) {
     try {
       child = spawnFn(client.executablePath, [], {
         cwd: client.clientPath,
-        detached: false,
+        detached: true,
         shell: false,
         stdio: "ignore",
         windowsHide: true,
