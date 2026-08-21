@@ -15,6 +15,11 @@ contextBridge.exposeInMainWorld("asr", {
   revealRunInFolder: (segmentsPath) => ipcRenderer.invoke("run:reveal-in-folder", segmentsPath),
   confirmDeleteRun: (segmentsPath) => ipcRenderer.invoke("run:confirm-delete", segmentsPath),
   deleteRun: (segmentsPath) => ipcRenderer.invoke("run:delete", segmentsPath),
+  selectUpdatePackage: () => ipcRenderer.invoke("update:select-package"),
+  getUpdateStatus: () => ipcRenderer.invoke("update:status"),
+  prepareUpdate: (packagePath) => ipcRenderer.invoke("update:prepare", packagePath),
+  cancelUpdate: () => ipcRenderer.invoke("update:cancel"),
+  activateUpdate: () => ipcRenderer.invoke("update:activate"),
   onCloseRequested: (callback) => {
     const listener = () => callback();
     ipcRenderer.on("editor:request-close", listener);

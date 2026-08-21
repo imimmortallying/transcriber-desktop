@@ -120,8 +120,9 @@ security audit и не утверждает наличие уязвимости 
   inspect receives a bounded build-time deployed-schema capability (`2`);
   absent capability is legacy v1. The comparison is readonly: known v2 either
   reports insufficient deployed capability or requires future v2 mutation
-  authority, while Full Setup bootstrap/provision/reconcile and every writer
-  remain v1-only. It derives Client paths only as `<root>/Clients/<key>`, validates canonical containment, rejects reparse
+  authority, while Full Setup bootstrap/provision/reconcile remain v1-only.
+  Coordinator alone writes protocol-valid v2 prepare/activate/commit/rollback
+  transitions. It derives Client paths only as `<root>/Clients/<key>`, validates canonical containment, rejects reparse
   points and requires the expected Client executable. Reader never scans
   `Clients`; unsupported schema, oversized/uninspectable slot and duplicate JSON
   keys in either slot win over otherwise valid v1 and remain read-only. Initial
@@ -132,8 +133,10 @@ security audit и не утверждает наличие уязвимости 
   type and reparse points, and passes no arguments. Coordinator derives root only
   from its own validated
   `<root>/Coordinator/asr-coordinator.exe` geometry, reads state and validates
-  only `activeClient` before process creation. It does not scan `Clients`, use
-  known-good fallback, repair state or wait for Client health/READY. State
+  only `activeClient` before ordinary process creation. Its explicit update
+  command path may recover activated state to known-good and validates a
+  candidate READY over inherited private IPC; it still does not scan `Clients`.
+  State
   consistency does not establish selected executable authenticity. Coordinator
   remains unsigned and, like the per-user writable installation, does not resist
   same-user local tampering after installation.
@@ -145,9 +148,38 @@ security audit и не утверждает наличие уязвимости 
   Full Setup preflight/uninstall integration has static coverage and still
   requires clean-VM validation.
 
-Supported per-user installation remains writable by its owner. These controls do
-not establish cryptographic trust in a Client artifact or prevent same-user state
-tampering; artifact authenticity/integrity verification remains future work.
+Supported per-user installation remains writable by its owner. The signed update
+package establishes release authenticity before extraction, but does not prevent
+same-user post-install tampering, replace Authenticode, or establish long-term
+Client health.
+
+### Signed local Client Update package
+
+- **Asset:** authenticity and integrity of externally supplied `.asrupdate`
+  Client payload before side-by-side staging.
+- **Threat:** a malformed ZIP, duplicate entry, untrusted signer, altered
+  payload, unsafe extraction path, stale READY, or unrelated local process could
+  make Coordinator accept arbitrary code as a Client update.
+- **Control:** format v1 admits exactly `manifest.json`, `manifest.sig` and
+  `client.zip`; strict duplicate-key manifest parsing, canonical Ed25519
+  signature verification by `keyId`, SHA-256 and size verification happen before
+  extraction. Production trusts only the pinned public Ed25519 set in
+  `src/update/productionTrust.js`; production private signing material is not in
+  the repository, artifacts or tests. ZIP paths, duplicates, symlinks and size
+  limits fail closed. Candidate identity remains a bounded Client version, never
+  an arbitrary executable path. READY uses a random attempt ID and one-time
+  token over inherited private Node IPC, never argv or a public endpoint.
+- **Limits:** generated Coordinator and Client remain unsigned; local per-user
+  writable installation has no post-install tamper resistance. READY means
+  Runtime validation plus BrowserWindow load, not transcription or long-term
+  health. Online acquisition and publisher hosting are not implemented.
+- **Verification:** `npm run test:update-package`, `npm run test:update-state`
+  and `npm run test:coordinator` cover distinct test trust, signature/payload
+  rejection, durable transitions, strict READY correlation and rollback logic.
+  `npm run test:client-update-e2e` additionally exercises a real SEA
+  Coordinator and packaged Electron candidate through signed test-package
+  staging, READY commit, failed-READY rollback and subsequent ordinary launch.
+  It never receives production signing material.
 
 ### Python, ffmpeg и другие subprocess
 

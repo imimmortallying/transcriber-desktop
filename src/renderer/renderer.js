@@ -22,6 +22,12 @@ const fileName = document.querySelector("#file-name");
 const resultsDirectory = document.querySelector("#results-directory");
 const selectResultsDirectoryButton = document.querySelector("#select-results-directory");
 const revealResultsDirectoryButton = document.querySelector("#reveal-results-directory");
+const selectUpdatePackageButton = document.querySelector("#select-update-package");
+const prepareUpdateButton = document.querySelector("#prepare-update");
+const activateUpdateButton = document.querySelector("#activate-update");
+const cancelUpdateButton = document.querySelector("#cancel-update");
+const updatePackageName = document.querySelector("#update-package-name");
+const updateStatus = document.querySelector("#update-status");
 const status = document.querySelector("#status");
 const editor = document.querySelector("#editor");
 const documentMode = document.querySelector("#document-mode");
@@ -47,6 +53,9 @@ let speakers = [];
 let nextParagraphId = 1;
 let nextSpeakerId = 1;
 let openSpeakerPopoverParagraphId = null;
+let selectedUpdatePackage = null;
+let preparedUpdate = null;
+let updateOperationInProgress = false;
 
 function getSpeakerColor(index) {
   return `hsl(${(index * 137.508) % 360} 58% 42%)`;
@@ -115,7 +124,28 @@ function setRunning(running) {
   savedRunsPanel.querySelectorAll("button").forEach((button) => {
     button.disabled = running;
   });
+  renderUpdateControls();
   updateActiveSavedRun();
+}
+
+function renderUpdateControls() {
+  selectUpdatePackageButton.disabled = updateOperationInProgress;
+  prepareUpdateButton.disabled = updateOperationInProgress || !selectedUpdatePackage || Boolean(preparedUpdate);
+  activateUpdateButton.disabled = updateOperationInProgress || isRunning || !preparedUpdate;
+  cancelUpdateButton.disabled = updateOperationInProgress || isRunning || !preparedUpdate;
+  updatePackageName.textContent = selectedUpdatePackage || "No update package selected";
+  updateStatus.textContent = preparedUpdate
+    ? `Prepared Client ${preparedUpdate.candidateClient.version}; restart is required to apply it.`
+    : "No Client Update is prepared.";
+}
+
+async function refreshUpdateStatus() {
+  try {
+    preparedUpdate = await window.asr.getUpdateStatus();
+  } catch {
+    preparedUpdate = null;
+  }
+  renderUpdateControls();
 }
 
 function formatTimecode(seconds) {
@@ -822,6 +852,78 @@ function renderEditor() {
   setRunning(isRunning);
 }
 
+selectUpdatePackageButton.addEventListener("click", async () => {
+  if (updateOperationInProgress) {
+    return;
+  }
+  const packagePath = await window.asr.selectUpdatePackage();
+  if (!packagePath) {
+    return;
+  }
+  selectedUpdatePackage = packagePath;
+  renderUpdateControls();
+});
+
+prepareUpdateButton.addEventListener("click", async () => {
+  if (!selectedUpdatePackage || updateOperationInProgress || preparedUpdate) {
+    return;
+  }
+  updateOperationInProgress = true;
+  renderUpdateControls();
+  status.textContent = "Preparing signed Client Update…";
+  try {
+    preparedUpdate = await window.asr.prepareUpdate(selectedUpdatePackage);
+    selectedUpdatePackage = null;
+    status.textContent = "Client Update is prepared. Continue working or restart to apply it.";
+  } catch (error) {
+    status.textContent = `Update preparation failed: ${error.message}`;
+  } finally {
+    updateOperationInProgress = false;
+    renderUpdateControls();
+  }
+});
+
+cancelUpdateButton.addEventListener("click", async () => {
+  if (!preparedUpdate || updateOperationInProgress || isRunning) {
+    return;
+  }
+  updateOperationInProgress = true;
+  renderUpdateControls();
+  try {
+    await window.asr.cancelUpdate();
+    preparedUpdate = null;
+    status.textContent = "Prepared Client Update was cancelled.";
+  } catch (error) {
+    status.textContent = `Update cancellation failed: ${error.message}`;
+  } finally {
+    updateOperationInProgress = false;
+    renderUpdateControls();
+  }
+});
+
+activateUpdateButton.addEventListener("click", async () => {
+  if (!preparedUpdate || updateOperationInProgress || isRunning) {
+    return;
+  }
+  if (!window.confirm("ASR will restart and be temporarily unavailable while the new Client starts. Continue?")) {
+    return;
+  }
+  if (!confirmDiscardUnsavedChanges()) {
+    return;
+  }
+  isProjectDirty = false;
+  updateOperationInProgress = true;
+  renderUpdateControls();
+  status.textContent = "Restarting ASR to validate the prepared Client Update…";
+  try {
+    await window.asr.activateUpdate();
+  } catch (error) {
+    updateOperationInProgress = false;
+    status.textContent = `Update activation failed: ${error.message}`;
+    renderUpdateControls();
+  }
+});
+
 selectFileButton.addEventListener("click", async () => {
   const filePath = await window.asr.selectMedia();
   if (!filePath) {
@@ -1131,3 +1233,4 @@ window.asr.onProgress((message) => {
 });
 
 loadResultsDirectory();
+refreshUpdateStatus();

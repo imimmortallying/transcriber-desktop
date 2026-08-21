@@ -1,13 +1,11 @@
 # Client Update Lifecycle
 
-Этот документ — source of truth для утверждённой принципиальной архитектуры
-обновления Client без повторной доставки тяжёлого ASR Runtime. Он описывает
-целевую модель следующего milestone, а не реализованное поведение: Client
-updater, update source, verification, staging и activation coordination пока
-отсутствуют. Уже реализованы release/build граница — `npm run dist:client` создаёт
-один provider-neutral ZIP Client bundle без Runtime — и ограниченный stable launch
-stub. Получение, verification, staging, activation и запуск полученного artifact
-пока не реализованы.
+Этот документ — source of truth для Client Update без повторной доставки тяжёлого
+ASR Runtime. Реализован первый local/offline lifecycle: Client выбирает локальный
+`.asrupdate`, Coordinator проверяет подпись и payload, готовит side-by-side
+candidate, а после явно подтверждённого restart выполняет activation, READY,
+commit либо rollback. Online acquisition, release hosting, Runtime update и
+combined upgrade по-прежнему вне этого блока.
 Фактические Full Setup, Runtime repair и uninstall описаны в
 [документе упаковки](../packaging/module.md).
 Наблюдаемое текущее поведение и статус его validation собраны в
@@ -23,13 +21,13 @@ Launcher не сканирует `Clients` и не выбирает версию
 content. Registration `InstallLocation` и uninstaller временно остаются
 принадлежностью текущего Client.
 
-Standalone Coordinator реализован как отдельный GUI-subsystem SEA executable: при
-запуске только из validated `<root>/Coordinator/asr-coordinator.exe` geometry он
-read-only читает `InstallationState`, выбирает `activeClient`, валидирует и создаёт
-его процесс. Он не делает READY/health check, repair, known-good fallback или
-Client scan. Полный production launch path уже физически доставляется Full Setup,
-но это всё ещё не реализация Client update lifecycle: candidate/activation/READY,
-recovery и rollback отсутствуют.
+Standalone Coordinator реализован как отдельный GUI-subsystem SEA executable. Его
+ordinary launch из validated `<root>/Coordinator/asr-coordinator.exe` geometry
+по-прежнему только читает state, валидирует и создаёт `activeClient`. Отдельные
+явные update-команды принадлежат Coordinator: они подготавливают candidate,
+публикуют v2 transaction, запускают candidate через private inherited Node IPC,
+ждут READY и выполняют commit или rollback. Ordinary launcher не передаёт
+update-аргументы и не сканирует `Clients`.
 
 Slice 5 добавляет root-owned foundation
 `<ASR root>/InstallationState/slot-a.json` и `slot-b.json`. Schema v1 содержит
@@ -39,8 +37,8 @@ Reader читает только два slot-а, отвергает unknown sche
 не выбирает Client по геометрии файловой системы. Full Setup временно provision/reconcile-ит state
 через internal non-UI mode установленного Client; это не делает Client будущим
 update coordinator, которым остаётся stable launch/update infrastructure.
-В v1 `knownGoodClient` — bootstrap designation successful Full Setup, а не
-подтверждение READY; READY semantics появится только с будущим coordinator.
+В v1 `knownGoodClient` — bootstrap designation successful Full Setup. В v2 после
+успешного update commit он означает Client, подтвердивший ограниченный READY.
 
 ## Граница milestone
 
@@ -96,7 +94,7 @@ format остаётся будущей работой.
 | **candidate** | Полностью подготовленная рядом с текущей новая версия Client; до подтверждённого запуска не является known-good. |
 | **active** | Версия, которую должна запускать стабильная точка входа. |
 | **known-good** | Последняя версия Client с подтверждённым READY; до commit предыдущая known-good остаётся восстанавливаемой. |
-| **stable launch/update infrastructure** | Стабильная роль вне заменяемой версии Client: определяет active, запускает его и участвует в activation, recovery и rollback. Сейчас root `asr-launch.exe` передаёт запуск standalone Coordinator; тот read-only выбирает только `activeClient`, но не реализует activation, recovery или rollback. |
+| **stable launch/update infrastructure** | Стабильная роль вне заменяемой версии Client: root `asr-launch.exe` передаёт ordinary launch standalone Coordinator, а explicit Coordinator update commands own activation, READY, recovery and rollback. |
 | **working Client** | Выполняет user-facing flow, discovery/acquisition и подготовку update; перед activation завершает работу и делает handoff stable infrastructure. |
 
 После handoff transaction обязана завершаться или восстанавливаться без старого
@@ -159,10 +157,9 @@ slot и structurally ambiguous JSON (включая duplicate keys) имеют �
 valid v1 и приводят к read-only abort: старый Full Setup не удаляет и не
 перезаписывает такие state files.
 
-### InstallationState schema v2 reader foundation
+### InstallationState schema v2 transaction protocol
 
-Schema v2 introduces the future transaction shape without enabling any production
-writer:
+Schema v2 stores the durable Coordinator-owned transaction:
 
 ```json
 {
@@ -181,19 +178,17 @@ known-good Clients. A prepared transaction keeps active equal to known-good and
 uses a different candidate; an activated transaction makes active equal to the
 candidate while retaining a different known-good Client.
 
-This slice adds strict v2 normalization, semantic comparison and one explicit
-readonly launch reader. Coordinator uses that launch reader to accept valid v1
-or v2 and still validates and launches only `activeClient`; transaction fields
-do not select a Client or cause lifecycle actions. Full Setup preflight now
-declares the maximum schema its deployed infrastructure understands (`2`); an
-absent declaration is conservatively treated as legacy schema-v1 capability.
-The installed Client performs that comparison readonly before replacement: a
-known v2 state returns either capability-insufficient (`24`) or v2
-mutation-authority-required (`25`), so it is never passed to the current
-Full Setup mutation path. Bootstrap, provision, reconcile and every writer
-remain v1-only and write v1 only. No migration, prepare, activation, READY,
-commit or rollback behavior is implemented. Full Setup v2 mutation/recovery
-authority remains required before a future writer may publish v2.
+Coordinator upgrades a steady v1 state only for a verified prepared candidate,
+then durably writes `prepared`, `activated`, and a v2 steady state after commit
+or rollback. Prepared keeps active equal to known-good; activated makes the
+candidate active while preserving the prior known-good. An ordinary Coordinator
+launch rolls back interrupted activated state before it creates a Client process;
+prepared state continues to launch known-good and can be explicitly cancelled.
+
+Full Setup remains readonly v1/v2-aware but has no v2 mutation or recovery
+authority. Any valid v2 state, including either transaction phase, fails closed
+before Full Setup replacement. Bootstrap, provision and reconcile remain v1-only;
+Full Setup handoff and cross-version Full Setup delivery are future work.
 
 ## Failure, rollback и recovery
 
@@ -212,16 +207,25 @@ Trust boundary проходит между installation/update infrastructure и
 аутентичность и целостность artifact, корректную обработку недоверенного или
 повреждённого результата и сохранение рабочей known-good версии.
 
-Конкретные cryptographic/signing scheme, ключевая модель, storage provider,
-сетевой протокол, update framework и IPC для READY намеренно не выбраны. Эти
-implementation-level решения, их controls и verification будут зафиксированы
-вместе с реализацией в [security-документе](../security/module.md).
+`.asrupdate` format v1 has exactly `manifest.json`, `manifest.sig` and
+`client.zip`. Its canonical signed manifest contains a format version, `keyId`,
+bounded Client version, Runtime API version, payload SHA-256 and payload size.
+Production verification accepts only the pinned Ed25519 public trust anchor in
+`src/update/productionTrust.js`; its private key remains outside this repository,
+build outputs and test fixtures. Tests use a separate trust root that production
+verification never accepts. The key ID supports additive future key rotation.
+
+READY uses dedicated inherited Node IPC only for candidate validation. Coordinator
+sends a random attempt ID and one-time token over IPC (never argv), and accepts
+one exact matching response after the packaged Electron Client has validated the
+Runtime and loaded its BrowserWindow. It proves minimum UI/Runtime startup, not
+transcription correctness or long-term health.
 
 ## Намеренно вне scope
 
 Этот milestone не проектирует: Runtime update lifecycle, combined upgrade,
-updater self-update, update channels, staged rollout, delta updates, retention
+updater self-update, online update channels, staged rollout, delta updates, retention
 policy, полноценную migration strategy application data, конкретный online
-backend или storage, concrete launcher/updater layout, IPC, криптографию и
-transaction/activation schema. Архитектурные границы не должны закрывать путь к
+backend или storage, Full Setup handoff/cross-version delivery, candidate code
+signing or Authenticode. Архитектурные границы не должны закрывать путь к
 этим возможностям, но первая реализация остаётся простой.

@@ -504,6 +504,15 @@ async function assertSelectedClient(installationRoot, state, { fsApi = fs } = {}
   return { version: clientVersion, clientPath, executablePath };
 }
 
+async function assertClientReference(installationRoot, clientReference, options = {}) {
+  return assertSelectedClient(installationRoot, {
+    schemaVersion: SCHEMA_VERSION,
+    generation: 1,
+    activeClient: clientReference,
+    knownGoodClient: clientReference,
+  }, options);
+}
+
 function stateForVersion(version, generation) {
   const client = { version: validateClientKey(version) };
   return {
@@ -517,7 +526,10 @@ function stateForVersion(version, generation) {
 async function writeSnapshot(directory, slotName, state, { fsApi = fs, id = randomUUID() } = {}) {
   const finalPath = path.join(directory, slotName);
   const temporaryPath = path.join(directory, `.${slotName}.tmp-${id}`);
-  const serialized = `${JSON.stringify(normalizeState(state), null, 2)}\n`;
+  const normalizedState = state && state.schemaVersion === SCHEMA_VERSION_V2
+    ? normalizeStateV2(state)
+    : normalizeState(state);
+  const serialized = `${JSON.stringify(normalizedState, null, 2)}\n`;
   let handle;
   try {
     handle = await fsApi.open(temporaryPath, "w");
@@ -533,6 +545,117 @@ async function writeSnapshot(directory, slotName, state, { fsApi = fs, id = rand
     await fsApi.rm(temporaryPath, { force: true }).catch(() => {});
     throw error;
   }
+}
+
+function selectedStateForTransition(readResult) {
+  if (!readResult || readResult.kind !== "selected") {
+    fail("UPDATE_STATE_UNAVAILABLE", "Installation state is unavailable for an update transition.");
+  }
+  return readResult.selected;
+}
+
+function steadyStateV2(state, generation) {
+  return normalizeStateV2({
+    schemaVersion: SCHEMA_VERSION_V2,
+    generation,
+    activeClient: { ...state.activeClient },
+    knownGoodClient: { ...state.knownGoodClient },
+    updateTransaction: null,
+  });
+}
+
+function selectTransitionSlot(readResult) {
+  return readResult.slots.find((slot) => slot.kind !== "valid")
+    || readResult.slots.find((slot) => slot.state.generation !== readResult.selected.generation)
+    || readResult.slots[0];
+}
+
+async function publishUpdateTransition(installationRoot, transition, options = {}) {
+  const readResult = await readLaunchInstallationState(installationRoot, options);
+  const current = selectedStateForTransition(readResult);
+  const nextState = normalizeStateV2(transition(current, current.generation + 1));
+  await writeSnapshot(readResult.stateDirectory, path.basename(selectTransitionSlot(readResult).path), nextState, options);
+  return nextState;
+}
+
+function requiresNoTransaction(state) {
+  if (state.schemaVersion === SCHEMA_VERSION_V2 && state.updateTransaction !== null) {
+    fail("UPDATE_TRANSACTION_EXISTS", "Installation state already contains an update transaction.");
+  }
+}
+
+async function prepareClientUpdate(installationRoot, candidateClient, options = {}) {
+  const candidate = validateClientReference(candidateClient, "update transaction candidateClient");
+  return publishUpdateTransition(installationRoot, (current, generation) => {
+    requiresNoTransaction(current);
+    if (current.activeClient.version !== current.knownGoodClient.version
+      || current.knownGoodClient.version === candidate.version) {
+      fail("INVALID_UPDATE_TRANSITION", "Candidate Client cannot be prepared from the current state.");
+    }
+    return {
+      schemaVersion: SCHEMA_VERSION_V2,
+      generation,
+      activeClient: { ...current.activeClient },
+      knownGoodClient: { ...current.knownGoodClient },
+      updateTransaction: { phase: "prepared", candidateClient: candidate },
+    };
+  }, options);
+}
+
+async function cancelPreparedClientUpdate(installationRoot, options = {}) {
+  return publishUpdateTransition(installationRoot, (current, generation) => {
+    if (current.schemaVersion !== SCHEMA_VERSION_V2 || current.updateTransaction?.phase !== "prepared") {
+      fail("NO_PREPARED_UPDATE", "Installation state has no prepared update to cancel.");
+    }
+    return steadyStateV2(current, generation);
+  }, options);
+}
+
+async function activatePreparedClientUpdate(installationRoot, options = {}) {
+  return publishUpdateTransition(installationRoot, (current, generation) => {
+    if (current.schemaVersion !== SCHEMA_VERSION_V2 || current.updateTransaction?.phase !== "prepared") {
+      fail("NO_PREPARED_UPDATE", "Installation state has no prepared update to activate.");
+    }
+    const candidateClient = { ...current.updateTransaction.candidateClient };
+    return {
+      schemaVersion: SCHEMA_VERSION_V2,
+      generation,
+      activeClient: candidateClient,
+      knownGoodClient: { ...current.knownGoodClient },
+      updateTransaction: { phase: "activated", candidateClient },
+    };
+  }, options);
+}
+
+async function commitActivatedClientUpdate(installationRoot, options = {}) {
+  return publishUpdateTransition(installationRoot, (current, generation) => {
+    if (current.schemaVersion !== SCHEMA_VERSION_V2 || current.updateTransaction?.phase !== "activated") {
+      fail("NO_ACTIVATED_UPDATE", "Installation state has no activated update to commit.");
+    }
+    const candidateClient = { ...current.updateTransaction.candidateClient };
+    return {
+      schemaVersion: SCHEMA_VERSION_V2,
+      generation,
+      activeClient: candidateClient,
+      knownGoodClient: { ...candidateClient },
+      updateTransaction: null,
+    };
+  }, options);
+}
+
+async function rollbackActivatedClientUpdate(installationRoot, options = {}) {
+  return publishUpdateTransition(installationRoot, (current, generation) => {
+    if (current.schemaVersion !== SCHEMA_VERSION_V2 || current.updateTransaction?.phase !== "activated") {
+      fail("NO_ACTIVATED_UPDATE", "Installation state has no activated update to roll back.");
+    }
+    return {
+      schemaVersion: SCHEMA_VERSION_V2,
+      generation,
+      activeClient: { ...current.knownGoodClient },
+      knownGoodClient: { ...current.knownGoodClient },
+      updateTransaction: null,
+    };
+  }, options);
 }
 
 async function prepareStateDirectory(directory, state, options = {}) {
@@ -671,19 +794,25 @@ module.exports = {
   SCHEMA_VERSION_V2,
   SLOT_NAMES,
   STATE_DIRECTORY,
+  activatePreparedClientUpdate,
+  assertClientReference,
   assertSelectedClient,
+  cancelPreparedClientUpdate,
   classifySlot,
+  commitActivatedClientUpdate,
   derivePackagedInstallation,
   inspectInstallationStateForSetup,
   normalizeState,
   normalizeStateV2,
   parseJsonWithUniqueKeys,
   parseInspectMaxSchema,
+  prepareClientUpdate,
   publishInitialState,
   readInstallationState,
   readLaunchInstallationState,
   reconcileInstallationState,
   removeProvisioningStateArtifacts,
+  rollbackActivatedClientUpdate,
   sameLogicalState,
   stateForVersion,
   validateClientKey,

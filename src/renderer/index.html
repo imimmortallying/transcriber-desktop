@@ -29,6 +29,20 @@
         </div>
       </section>
 
+      <section class="controls" aria-label="Client Update">
+        <div class="action-group">
+          <p class="action-group-title">Client Update</p>
+          <div class="action-group-actions">
+            <button id="select-update-package" class="secondary-button" type="button">Choose .asrupdate</button>
+            <output id="update-package-name">No update package selected</output>
+            <button id="prepare-update" type="button" disabled>Prepare update</button>
+            <button id="activate-update" type="button" disabled>Restart and apply</button>
+            <button id="cancel-update" class="secondary-button" type="button" disabled>Cancel prepared update</button>
+          </div>
+          <p id="update-status" class="hint">No Client Update is prepared.</p>
+        </div>
+      </section>
+
       <section id="saved-runs" class="saved-runs" aria-labelledby="saved-runs-title" hidden>
         <div class="saved-runs-heading">
           <h2 id="saved-runs-title">Сохранённые прогоны</h2>

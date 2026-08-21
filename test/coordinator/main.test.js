@@ -4,7 +4,13 @@ const os = require("node:os");
 const path = require("node:path");
 const { EventEmitter } = require("node:events");
 const test = require("node:test");
-const { CoordinatorExitCode, runCoordinator } = require("../../src/coordinator/main");
+const { readLaunchInstallationState } = require("../../src/update/installationState");
+const {
+  CoordinatorExitCode,
+  launchCandidateForReady,
+  parseUpdateCommand,
+  runCoordinator,
+} = require("../../src/coordinator/main");
 
 async function withCoordinatorGeometry(callback) {
   const root = await mkdtemp(path.join(os.tmpdir(), "asr-coordinator-"));
@@ -134,7 +140,7 @@ test("Coordinator launches only selected active Client after spawn confirmation"
   });
 });
 
-test("Coordinator default launch reader launches active Client from v1 and v2 states without writing slots", async () => {
+test("Coordinator default launch preserves steady v1/v2 state and recovers activated state to known-good Client", async () => {
   await withCoordinatorGeometry(async ({ root, executablePath }) => {
     await Promise.all([createClient(root, "0.1.0"), createClient(root, "0.2.0")]);
     const cases = [
@@ -144,7 +150,7 @@ test("Coordinator default launch reader launches active Client from v1 and v2 st
       [stateV2({
         activeVersion: "0.2.0",
         updateTransaction: { phase: "activated", candidateClient: { version: "0.2.0" } },
-      }), "0.2.0"],
+      }), "0.1.0"],
     ];
     for (const [state, expectedVersion] of cases) {
       await writeInstallationState(root, state);
@@ -156,12 +162,18 @@ test("Coordinator default launch reader launches active Client from v1 and v2 st
       assert.equal(spawned.calls[0][0], path.join(root, "Clients", expectedVersion, "local-asr-prototype.exe"));
       spawned.child.emit("spawn");
       assert.equal(await result, CoordinatorExitCode.SUCCESS);
-      assert.deepEqual(await Promise.all(slotPaths.map((slotPath) => readFile(slotPath, "utf8"))), before);
+      const after = await Promise.all(slotPaths.map((slotPath) => readFile(slotPath, "utf8")));
+      if (state.updateTransaction?.phase === "activated") {
+        assert.notDeepEqual(after, before);
+        assert.equal(JSON.parse(after[0]).activeClient.version, "0.1.0");
+      } else {
+        assert.deepEqual(after, before);
+      }
     }
   });
 });
 
-test("Coordinator default launch reader preserves v2 state and selected Client failure exits", async () => {
+test("Coordinator recovery uses known-good validation after activated-state interruption", async () => {
   await withCoordinatorGeometry(async ({ root, executablePath }) => {
     const activated = stateV2({
       activeVersion: "0.2.0",
@@ -172,7 +184,7 @@ test("Coordinator default launch reader preserves v2 state and selected Client f
 
     const executablePathForClient = path.join(root, "Clients", "0.2.0", "local-asr-prototype.exe");
     await mkdir(executablePathForClient, { recursive: true });
-    assert.equal(await runCoordinator({ executablePath }), CoordinatorExitCode.UNSAFE_SELECTED_CLIENT);
+    assert.equal(await runCoordinator({ executablePath }), CoordinatorExitCode.SELECTED_CLIENT_UNAVAILABLE);
 
     await writeInstallationState(root, stateV2({
       updateTransaction: { phase: "prepared", candidateClient: { version: "0.1.0" } },
@@ -273,5 +285,86 @@ test("Coordinator reports process creation and unexpected failures separately", 
         throw new Error("unexpected");
       },
     }), CoordinatorExitCode.UNEXPECTED_FAILURE);
+  });
+});
+
+test("update command parser has no implicit or ambiguous mode", () => {
+  assert.equal(parseUpdateCommand([]), null);
+  assert.deepEqual(parseUpdateCommand(["--asr-client-update=prepare", "--asr-update-package=C:\\candidate.asrupdate"]), {
+    kind: "prepare",
+    packagePath: "C:\\candidate.asrupdate",
+  });
+  for (const argumentsList of [
+    ["--asr-client-update=prepare"],
+    ["--asr-client-update=activate", "--asr-update-package=C:\\candidate.asrupdate"],
+    ["--asr-client-update=prepare", "--asr-client-update=prepare", "--asr-update-package=C:\\candidate.asrupdate"],
+  ]) {
+    assert.equal(parseUpdateCommand(argumentsList).kind, "invalid");
+  }
+});
+
+test("candidate READY requires the exact private IPC correlation", async () => {
+  const spawned = createSpawn();
+  spawned.child.connected = true;
+  spawned.child.send = (message, callback) => {
+    spawned.initialMessage = message;
+    callback();
+  };
+  const ready = launchCandidateForReady({
+    clientPath: "C:\\candidate",
+    executablePath: "C:\\candidate\\local-asr-prototype.exe",
+  }, spawned.spawnFn, { attemptId: "attempt", token: "token", timeoutMs: 1_000 });
+  await waitForSpawn(spawned);
+  spawned.child.emit("spawn");
+  assert.deepEqual(spawned.calls[0][2], {
+    cwd: "C:\\candidate",
+    detached: true,
+    shell: false,
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+    windowsHide: true,
+  });
+  spawned.child.emit("message", {
+    type: "asr-update-ready",
+    protocolVersion: 1,
+    attemptId: "attempt",
+    token: "wrong",
+  });
+  await assert.rejects(ready, /invalid READY/);
+});
+
+test("activated update commits only after READY and rolls back to known-good on failure", async () => {
+  await withCoordinatorGeometry(async ({ root, executablePath }) => {
+    await Promise.all([createClient(root, "0.1.0"), createClient(root, "0.2.0")]);
+    await writeInstallationState(root, stateV2({
+      updateTransaction: { phase: "prepared", candidateClient: { version: "0.2.0" } },
+    }));
+    const readyChild = createSpawn().child;
+    readyChild.connected = false;
+    readyChild.unref = () => {};
+    assert.equal(await runCoordinator({
+      executablePath,
+      argumentsList: ["--asr-client-update=activate"],
+      readyLaunch: async () => readyChild,
+    }), CoordinatorExitCode.SUCCESS);
+    const committed = (await readLaunchInstallationState(root)).selected;
+    assert.equal(committed.updateTransaction, null);
+    assert.equal(committed.activeClient.version, "0.2.0");
+
+    await writeInstallationState(root, stateV2({
+      updateTransaction: { phase: "prepared", candidateClient: { version: "0.2.0" } },
+    }));
+    const fallback = createSpawn();
+    const result = runCoordinator({
+      executablePath,
+      argumentsList: ["--asr-client-update=activate"],
+      readyLaunch: async () => { throw new Error("no READY"); },
+      spawnFn: fallback.spawnFn,
+    });
+    await waitForSpawn(fallback);
+    fallback.child.emit("spawn");
+    assert.equal(await result, CoordinatorExitCode.UPDATE_VALIDATION_FAILED);
+    const rolledBack = (await readLaunchInstallationState(root)).selected;
+    assert.equal(rolledBack.updateTransaction, null);
+    assert.equal(rolledBack.activeClient.version, "0.1.0");
   });
 });

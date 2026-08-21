@@ -7,6 +7,7 @@ const test = require("node:test");
 const { coordinatorOutput } = require("../../scripts/buildCoordinator");
 const { buildStableLauncher, getNsisCompiler, run } = require("../../scripts/buildStableLauncher");
 const { CoordinatorExitCode } = require("../../src/coordinator/main");
+const { readLaunchInstallationState } = require("../../src/update/installationState");
 
 const projectRoot = path.resolve(__dirname, "../..");
 const fakeClientSource = path.join(__dirname, "fakeClient.nsi");
@@ -189,7 +190,7 @@ test("SEA coordinator launches only the selected normal Windows Client without N
   }
 });
 
-test("SEA coordinator launches the active candidate from v2 activated state without Node in PATH", async () => {
+test("SEA coordinator recovers activated state to known-good Client without Node in PATH", async () => {
   const outputInfo = await stat(coordinatorOutput);
   assert.equal(outputInfo.isFile(), true);
 
@@ -202,6 +203,8 @@ test("SEA coordinator launches the active candidate from v2 activated state with
     const knownGoodDirectory = path.join(root, "Clients", "0.1.0");
     const activeCandidateDirectory = path.join(root, "Clients", "0.2.0");
     const activeCandidateExecutable = path.join(activeCandidateDirectory, "local-asr-prototype.exe");
+    const knownGoodExecutable = path.join(knownGoodDirectory, "local-asr-prototype.exe");
+    const knownGoodMarker = path.join(knownGoodDirectory, "CLIENT_LAUNCHED.txt");
     const activeCandidateMarker = path.join(activeCandidateDirectory, "CLIENT_LAUNCHED.txt");
     const state = `${activatedStateForVersion("0.2.0", "0.1.0")}\n`;
     await Promise.all([
@@ -212,26 +215,22 @@ test("SEA coordinator launches the active candidate from v2 activated state with
     ]);
     await copyFile(coordinatorOutput, installedCoordinator);
     await buildFakeClient(activeCandidateExecutable);
+    await buildFakeClient(knownGoodExecutable);
     await writeFile(path.join(stateDirectory, "slot-a.json"), state, "utf8");
     await writeFile(path.join(stateDirectory, "slot-b.json"), state, "utf8");
-    const before = await Promise.all([
-      readFile(path.join(stateDirectory, "slot-a.json"), "utf8"),
-      readFile(path.join(stateDirectory, "slot-b.json"), "utf8"),
-    ]);
-
     assert.equal((await runCoordinator(installedCoordinator)).code, CoordinatorExitCode.SUCCESS);
-    assert.equal(await waitForMarker(activeCandidateMarker), "selected Client launched\r\n");
-    await rm(activeCandidateMarker);
+    assert.equal(await waitForMarker(knownGoodMarker), "selected Client launched\r\n");
+    await rm(knownGoodMarker);
     await buildStableLauncher({ outputPath: installedLauncher, testMode: true });
     assert.equal((await runCoordinator(installedLauncher)).code, CoordinatorExitCode.SUCCESS);
-    assert.equal(await waitForMarker(activeCandidateMarker), "selected Client launched\r\n");
-    await assert.rejects(readFile(path.join(knownGoodDirectory, "CLIENT_LAUNCHED.txt"), "utf8"), {
+    assert.equal(await waitForMarker(knownGoodMarker), "selected Client launched\r\n");
+    await assert.rejects(readFile(activeCandidateMarker, "utf8"), {
       code: "ENOENT",
     });
-    assert.deepEqual(await Promise.all([
-      readFile(path.join(stateDirectory, "slot-a.json"), "utf8"),
-      readFile(path.join(stateDirectory, "slot-b.json"), "utf8"),
-    ]), before);
+    const recovered = (await readLaunchInstallationState(root)).selected;
+    assert.equal(recovered.activeClient.version, "0.1.0");
+    assert.equal(recovered.knownGoodClient.version, "0.1.0");
+    assert.equal(recovered.updateTransaction, null);
   } finally {
     await rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   }

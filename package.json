@@ -6,16 +6,21 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/ipcSpikeClient.js && node --check src/runtime/resolveCurrentClientInstallationRoot.js && node --check src/runtime/resolveRuntime.js && node --check src/update/installationState.js && node --check src/coordinator/main.js && node --check src/coordinator/inheritedIpcSpike.js && node --check src/recognition/runRecognition.js && node --check src/renderer/renderer.js && node --check scripts/buildRuntimeArchive.js && node --check scripts/buildClientArtifact.js && node --check scripts/buildStableLauncher.js && node --check scripts/buildCoordinator.js && node --check scripts/buildCoordinatorIpcSpike.js && node --check scripts/buildFullSetupE2e.js && node --check test/coordinator/inheritedIpcSpike.test.js && node --check test/packaging/fullSetupE2eCleanup.js && node --check test/packaging/fullSetupE2eCleanup.test.js && node --check test/packaging/fullSetupE2eHarness.js",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/ipcSpikeClient.js && node --check src/runtime/resolveCurrentClientInstallationRoot.js && node --check src/runtime/resolveRuntime.js && node --check src/update/installationState.js && node --check src/update/clientUpdatePackage.js && node --check src/update/productionTrust.js && node --check src/coordinator/main.js && node --check src/coordinator/inheritedIpcSpike.js && node --check src/recognition/runRecognition.js && node --check src/renderer/renderer.js && node --check scripts/buildRuntimeArchive.js && node --check scripts/buildClientArtifact.js && node --check scripts/createClientUpdatePackage.js && node --check scripts/buildStableLauncher.js && node --check scripts/buildCoordinator.js && node --check scripts/buildCoordinatorIpcSpike.js && node --check scripts/buildCoordinatorClientUpdateE2e.js && node --check scripts/buildFullSetupE2e.js && node --check test/coordinator/inheritedIpcSpike.test.js && node --check test/coordinator/clientUpdateE2eCoordinator.js && node --check test/coordinator/clientUpdateLifecycleE2e.test.js && node --check test/update/clientUpdatePackage.test.js && node --check test/update/testSigning.js && node --check test/packaging/fullSetupE2eCleanup.js && node --check test/packaging/fullSetupE2eCleanup.test.js && node --check test/packaging/fullSetupE2eHarness.js",
     "build:launcher": "node scripts/buildStableLauncher.js",
     "build:coordinator": "node scripts/buildCoordinator.js",
     "build:coordinator-ipc-spike": "node scripts/buildCoordinatorIpcSpike.js",
+    "build:coordinator-client-update-e2e": "node scripts/buildCoordinatorClientUpdateE2e.js",
     "test:launcher": "node --test test/launcher/stableLauncher.test.js",
     "test:coordinator": "node --test test/coordinator/main.test.js",
     "test:coordinator-sea": "npm run build:coordinator && node --test test/coordinator/seaArtifact.test.js",
     "test:coordinator-ipc-spike": "npm run dist:client && npm run build:coordinator-ipc-spike && node --test test/coordinator/inheritedIpcSpike.test.js",
     "test:runtime": "node --test test/runtime/resolveRuntime.test.js",
     "test:update-state": "node --test test/update/installationState.test.js",
+    "test:update-package": "node --test test/update/clientUpdatePackage.test.js",
+    "test:client-update": "npm run test:update-state && npm run test:update-package && npm run test:coordinator",
+    "test:client-update-e2e": "npm run dist:client && npm run build:coordinator-client-update-e2e && node --test test/coordinator/clientUpdateLifecycleE2e.test.js",
+    "create:update-package": "node scripts/createClientUpdatePackage.js",
     "test:packaging": "node --test test/packaging/fullSetup.test.js test/packaging/fullSetupE2eCleanup.test.js",
     "test:full-setup-e2e": "node test/packaging/fullSetupE2eHarness.js",
     "prepare:runtime": "node scripts/buildRuntimeArchive.js",
@@ -54,5 +59,8 @@
     "electron-builder": "26.0.12",
     "esbuild": "0.28.2",
     "postject": "1.0.0-alpha.6"
+  },
+  "dependencies": {
+    "yauzl": "^2.10.0"
   }
 }

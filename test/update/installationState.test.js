@@ -11,15 +11,20 @@ const {
   SCHEMA_VERSION_V2,
   SLOT_NAMES,
   STATE_DIRECTORY,
+  activatePreparedClientUpdate,
   assertSelectedClient,
+  cancelPreparedClientUpdate,
+  commitActivatedClientUpdate,
   inspectInstallationStateForSetup,
   normalizeState,
   normalizeStateV2,
   parseInspectMaxSchema,
+  prepareClientUpdate,
   publishInitialState,
   readInstallationState,
   readLaunchInstallationState,
   reconcileInstallationState,
+  rollbackActivatedClientUpdate,
   sameLogicalState,
   stateForVersion,
   validateClientKey,
@@ -125,6 +130,49 @@ test("schema v2 accepts exact steady, prepared, and activated states", () => {
   assert.deepEqual(normalizeStateV2(steady), steady);
   assert.deepEqual(normalizeStateV2(prepared), prepared);
   assert.deepEqual(normalizeStateV2(activated), activated);
+});
+
+test("Coordinator-owned transitions upgrade v1 then preserve durable prepare, activation, rollback, and commit meaning", async () => {
+  await withInstallation(async (root) => {
+    await createClient(root, "0.1.0");
+    await createClient(root, "0.2.0");
+    await publishInitialState(root, "0.1.0", { id: "update-transition" });
+
+    const prepared = await prepareClientUpdate(root, { version: "0.2.0" });
+    assert.equal(prepared.schemaVersion, SCHEMA_VERSION_V2);
+    assert.equal(prepared.updateTransaction.phase, "prepared");
+    assert.equal((await readLaunchInstallationState(root)).selected.updateTransaction.phase, "prepared");
+
+    const activated = await activatePreparedClientUpdate(root);
+    assert.equal(activated.activeClient.version, "0.2.0");
+    assert.equal(activated.knownGoodClient.version, "0.1.0");
+    assert.equal(activated.updateTransaction.phase, "activated");
+
+    const rolledBack = await rollbackActivatedClientUpdate(root);
+    assert.equal(rolledBack.updateTransaction, null);
+    assert.equal(rolledBack.activeClient.version, "0.1.0");
+    assert.equal(rolledBack.knownGoodClient.version, "0.1.0");
+
+    await prepareClientUpdate(root, { version: "0.2.0" });
+    await activatePreparedClientUpdate(root);
+    const committed = await commitActivatedClientUpdate(root);
+    assert.equal(committed.updateTransaction, null);
+    assert.equal(committed.activeClient.version, "0.2.0");
+    assert.equal(committed.knownGoodClient.version, "0.2.0");
+  });
+});
+
+test("prepared update can be cancelled without changing the known-good selection", async () => {
+  await withInstallation(async (root) => {
+    await createClient(root, "0.1.0");
+    await createClient(root, "0.2.0");
+    await publishInitialState(root, "0.1.0", { id: "cancel-update" });
+    await prepareClientUpdate(root, { version: "0.2.0" });
+    const cancelled = await cancelPreparedClientUpdate(root);
+    assert.equal(cancelled.updateTransaction, null);
+    assert.equal(cancelled.activeClient.version, "0.1.0");
+    assert.equal(cancelled.knownGoodClient.version, "0.1.0");
+  });
 });
 
 test("schema v2 rejects invalid transaction combinations and fields", () => {

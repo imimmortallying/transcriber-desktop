@@ -1,6 +1,7 @@
 const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require("electron");
 const { randomUUID } = require("node:crypto");
-const { readFile, readdir, rm, stat, writeFile } = require("node:fs/promises");
+const { spawn } = require("node:child_process");
+const { readFile, readdir, rename, rm, stat, writeFile } = require("node:fs/promises");
 const path = require("node:path");
 const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
 const { getCurrentRuntime } = require("./runtime/resolveRuntime");
@@ -10,10 +11,15 @@ const {
   inspectInstallationStateForSetup,
   reconcileInstallationState,
   removeProvisioningStateArtifacts,
+  readLaunchInstallationState,
 } = require("./update/installationState");
 
 const installationStateMode = process.argv.find((argument) => argument.startsWith("--asr-installation-state="));
 const ipcSpikeClientBehavior = process.argv.find((argument) => argument.startsWith("--asr-ipc-spike-client-behavior="));
+const updateValidationMode = process.argv.filter((argument) => argument === "--asr-update-validation");
+const updateE2eMarkerArgument = process.argv.find((argument) => argument.startsWith("--asr-update-e2e-marker="));
+const updateE2eReadyDelayArgument = process.argv.find((argument) => argument.startsWith("--asr-update-e2e-ready-delay="));
+const updateE2eFailReady = process.argv.includes("--asr-update-e2e-fail-ready");
 
 async function runInstallationStateMode(argument) {
   const mode = argument.slice("--asr-installation-state=".length);
@@ -44,6 +50,130 @@ async function runInstallationStateMode(argument) {
   }
 
   await reconcileInstallationState(installationRoot, version, { mode: mode === "provision" ? "provision" : "repair" });
+}
+
+function currentPackagedInstallation() {
+  if (!app.isPackaged) {
+    throw new Error("Client Update is available only from the packaged ASR Client.");
+  }
+  return derivePackagedInstallation();
+}
+
+function coordinatorPathForInstallation(installationRoot) {
+  return path.join(installationRoot, "Coordinator", "asr-coordinator.exe");
+}
+
+function runCoordinatorUpdate(command, packagePath, { waitForExit = true } = {}) {
+  const { installationRoot } = currentPackagedInstallation();
+  const argumentsList = [`--asr-client-update=${command}`];
+  if (packagePath) {
+    argumentsList.push(`--asr-update-package=${packagePath}`);
+  }
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(coordinatorPathForInstallation(installationRoot), argumentsList, {
+        cwd: installationRoot,
+        detached: !waitForExit,
+        shell: false,
+        stdio: "ignore",
+        windowsHide: true,
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    child.once("error", reject);
+    child.once("spawn", () => {
+      if (!waitForExit) {
+        child.unref();
+        resolve(0);
+      }
+    });
+    if (waitForExit) {
+      child.once("exit", (code) => resolve(code === null ? 19 : code));
+    }
+  });
+}
+
+function waitForUpdateInitialization() {
+  return new Promise((resolve, reject) => {
+    if (typeof process.send !== "function") {
+      reject(new Error("Update validation requires a private parent IPC channel."));
+      return;
+    }
+    process.once("message", (message) => {
+      if (!message || typeof message !== "object" || Array.isArray(message)
+        || Object.keys(message).length !== 4
+        || message.type !== "asr-update-init"
+        || message.protocolVersion !== 1
+        || typeof message.attemptId !== "string"
+        || typeof message.token !== "string") {
+        reject(new Error("Update validation initialization is invalid."));
+        return;
+      }
+      resolve(message);
+    });
+  });
+}
+
+async function runUpdateValidationMode() {
+  if (!app.isPackaged || updateValidationMode.length !== 1) {
+    throw new Error("Update validation invocation is invalid.");
+  }
+  const initialization = await waitForUpdateInitialization();
+  await app.whenReady();
+  Menu.setApplicationMenu(null);
+  await require("./runtime/resolveRuntime").validateRuntime(getCurrentRuntime());
+  const window = createWindow();
+  await new Promise((resolve) => window.webContents.once("did-finish-load", resolve));
+  if (updateE2eFailReady && process.env.ASR_CLIENT_UPDATE_E2E === "1") {
+    app.exit(73);
+    return;
+  }
+  const readyDelay = updateE2eReadyDelay();
+  if (readyDelay) {
+    await new Promise((resolve) => setTimeout(resolve, readyDelay));
+  }
+  process.send({
+    type: "asr-update-ready",
+    protocolVersion: 1,
+    attemptId: initialization.attemptId,
+    token: initialization.token,
+  });
+  const markerPath = updateE2eMarkerPath();
+  if (markerPath) {
+    process.once("disconnect", () => {
+      setTimeout(async () => {
+        const temporaryMarkerPath = `${markerPath}.tmp`;
+        await writeFile(temporaryMarkerPath, "Client remained alive after update Coordinator exit\r\n", "utf8");
+        await rename(temporaryMarkerPath, markerPath);
+        setTimeout(() => app.exit(0), 300);
+      }, 150);
+    });
+  }
+}
+
+function updateE2eMarkerPath() {
+  if (process.env.ASR_CLIENT_UPDATE_E2E !== "1" || !updateE2eMarkerArgument) {
+    return undefined;
+  }
+  const markerPath = path.resolve(updateE2eMarkerArgument.slice("--asr-update-e2e-marker=".length));
+  const expectedDirectory = path.dirname(process.execPath);
+  return path.dirname(markerPath) === expectedDirectory
+    && path.basename(markerPath) === "CLIENT_UPDATE_READY_AFTER_COORDINATOR_EXIT.txt"
+    ? markerPath
+    : undefined;
+}
+
+function updateE2eReadyDelay() {
+  if (process.env.ASR_CLIENT_UPDATE_E2E !== "1" || !updateE2eReadyDelayArgument) {
+    return 0;
+  }
+  const milliseconds = Number(updateE2eReadyDelayArgument.slice("--asr-update-e2e-ready-delay=".length));
+  return Number.isSafeInteger(milliseconds) && milliseconds >= 1 && milliseconds <= 5_000
+    ? milliseconds
+    : 0;
 }
 
 function getResultsSettingsPath() {
@@ -122,6 +252,7 @@ function createWindow() {
   });
 
   window.loadFile(path.join(__dirname, "renderer", "index.html"));
+  return window;
 }
 
 function getRunDirectory(segmentsPath) {
@@ -488,8 +619,58 @@ ipcMain.handle("dialog:save-transcript", async (_event, transcript) => {
   return filePath;
 });
 
+ipcMain.handle("update:select-package", async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    title: "Выберите подписанный пакет обновления ASR",
+    properties: ["openFile"],
+    filters: [{ name: "ASR update", extensions: ["asrupdate"] }],
+  });
+  return canceled ? null : filePaths[0];
+});
+
+ipcMain.handle("update:status", async () => {
+  const { installationRoot } = currentPackagedInstallation();
+  const result = await readLaunchInstallationState(installationRoot);
+  if (result.kind !== "selected") {
+    throw new Error("Installation state is unavailable for Client Update.");
+  }
+  return result.selected.updateTransaction || null;
+});
+
+ipcMain.handle("update:prepare", async (_event, packagePath) => {
+  if (typeof packagePath !== "string" || !packagePath) {
+    throw new Error("Не выбран пакет обновления.");
+  }
+  const exitCode = await runCoordinatorUpdate("prepare", packagePath);
+  if (exitCode !== 0) {
+    throw new Error(`Пакет обновления не подготовлен (Coordinator exit ${exitCode}).`);
+  }
+  const { installationRoot } = currentPackagedInstallation();
+  const result = await readLaunchInstallationState(installationRoot);
+  return result.kind === "selected" ? result.selected.updateTransaction : null;
+});
+
+ipcMain.handle("update:cancel", async () => {
+  const exitCode = await runCoordinatorUpdate("cancel");
+  if (exitCode !== 0) {
+    throw new Error(`Подготовленное обновление не отменено (Coordinator exit ${exitCode}).`);
+  }
+  return null;
+});
+
+ipcMain.handle("update:activate", async () => {
+  await runCoordinatorUpdate("activate", undefined, { waitForExit: false });
+  app.quit();
+  return true;
+});
+
 if (ipcSpikeClientBehavior) {
   require("./ipcSpikeClient").runIpcSpikeClient({ app });
+} else if (updateValidationMode.length > 0) {
+  runUpdateValidationMode().catch((error) => {
+    console.error(error.message);
+    app.exit(1);
+  });
 } else if (installationStateMode) {
   runInstallationStateMode(installationStateMode)
     .then(() => app.exit(0))
