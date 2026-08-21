@@ -74,14 +74,16 @@ security audit и не утверждает наличие уязвимости 
   application-controlled packaged/dev layout: в packaged-режиме он получает
   `installationRoot` и выводит shared `<installationRoot>/Runtime`, а
   development использует исходный layout. Root-level `asr-launch.exe` выводит
-  installation root из собственного каталога и временно запускает только expected
-  executable из единственного directory под `Clients`; он не принимает arbitrary
-  executable path и не использует shell. Он пока не передаёт installation context
-  Client. Поэтому `src/runtime/resolveCurrentClientInstallationRoot.js` временно
-  выводит `installationRoot` из текущего
-  `<ASR root>/Clients/<client version>/resources` layout;
-  это единственное место, знающее его геометрию. Runtime resolver не зависит от
-  глубины Client-каталога и не получает путь Runtime от пользователя. Перед
+  installation root из собственного каталога, валидирует только fixed
+  `<ASR root>/Coordinator/asr-coordinator.exe` и передаёт ему ordinary launch без
+  аргументов. Launcher не выбирает Client по filesystem. Coordinator читает
+  `InstallationState` и запускает только его validated `activeClient`; он не
+  принимает arbitrary executable path и не использует shell. Запущенный Client
+  всё ещё получает `installationRoot` через
+  `src/runtime/resolveCurrentClientInstallationRoot.js` из собственного
+  `<ASR root>/Clients/<client version>/resources` layout; этот resolver не
+  выбирает Client. Runtime resolver не зависит от глубины Client-каталога и не
+  получает путь Runtime от пользователя. Перед
   запуском Python Client
   читает `runtime-manifest.json`, проверяет format, identity и API version, а
   также наличие Python, pipeline/config, фактического CLI entrypoint и ffmpeg.

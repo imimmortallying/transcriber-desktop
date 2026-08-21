@@ -18,10 +18,16 @@ GigaAM. Оно помогает превратить машинную транс
 - Редактор транскрипции с ручным структурированием, говорящими, таймкодами,
   сохранением правок, экспортом и сравнением с распознанным текстом.
 - Настраиваемая папка результатов, список и управление сохранёнными прогонами.
+- В установленной Windows-поставке — local/offline обновление Client: выбрать
+  подписанный локальный `.asrupdate`, подготовить side-by-side candidate и после
+  restart применить его с READY/commit либо rollback. Runtime при этом не
+  переустанавливается и не изменяется.
 
 Подробности работы редактора и результатов — в `docs/editor/module.md`; запуска
 Python-пайплайна — в `docs/recognition/module.md`; правила и карта документации
-— в `docs/README.md`.
+- в `docs/README.md`. Lifecycle Client Update и его validation evidence — в
+`docs/client-update/module.md` и `docs/client-update/validation.md`;
+соответствующие trust boundaries — в `docs/security/module.md`.
 
 ## Ключевые решения
 

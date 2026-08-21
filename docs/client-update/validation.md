@@ -1,7 +1,7 @@
 # Client Update / Full Setup — behavioral validation matrix
 
 Этот документ — review-инструмент для фактического поведения Full Setup и
-переходных Slice 3–5. Он фиксирует ожидаемое наблюдаемое поведение и имеющееся
+завершённого First Working local/offline Client Update. Он фиксирует ожидаемое наблюдаемое поведение и имеющееся
 evidence, но не заменяет [архитектуру Client Update](module.md),
 [упаковку](../packaging/module.md) или [security model](../security/module.md).
 
@@ -116,7 +116,7 @@ Runtime post-extraction validation scenario without changing installer code:
 | Client rollback | Automated unit and real-artifact E2E evidence. | Rollback returns active/known-good to the prior Client. |
 | Client/Runtime compatibility rejection | Current / automated package/unit evidence. | Manifest Runtime API version must equal installed Runtime API version. |
 | Corrupted or untrusted Client artifact | Current / automated package evidence. | Strict Ed25519 signer, payload hash and ZIP checks reject malformed/untrusted test cases. The production release operation is verifier-postchecked but cannot be exercised automatically without the external production private key. |
-| Offline USB acquisition | **Future / undefined implementation.** | USB is a future Update Source; acquired artifacts remain untrusted before verification. |
+| Local/offline `.asrupdate` selection, including USB | Current implementation; no dedicated UI/USB validation evidence recorded. | Packaged Client opens a local `.asrupdate` file picker and forwards the selected path to Coordinator; a mounted USB volume is one such local source. The real-artifact E2E starts from a supplied test package, but does not exercise the picker or a physical USB device. |
 | Online acquisition | **Future / undefined implementation.** | Provider/protocol and acquisition flow are not implemented. |
 | Runtime update | **Future / separate lifecycle.** | Normal Client update must not modify Runtime. |
 | Stable updater/coordinator self-update | **Future / undefined implementation.** | Current `asr-launch.exe` is a launch stub, not an updater or coordinator. |

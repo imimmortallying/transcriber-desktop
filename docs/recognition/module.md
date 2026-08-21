@@ -15,11 +15,13 @@ entrypoint `pipeline/asr_pipeline/cli.py`. Проверка не импорти�
 `pipeline/`, `pipeline/.venv` и `resources/`; в packaged-режиме Runtime находится
 в sibling-каталоге `<ASR root>/Runtime`, а Client — в
 `<ASR root>/Clients/<client version>`.
-Пока stable launch infrastructure нет,
-`src/runtime/resolveCurrentClientInstallationRoot.js` временно выводит
-`installationRoot` из текущего `<ASR root>/Clients/<client version>/resources` layout. Это
-единственное место, знающее эту временную геометрию; Runtime resolver от глубины
-Client-каталога не зависит и позже может получить context от stable infrastructure.
+Stable launch infrastructure уже выбирает Client через fixed Coordinator и
+`InstallationState`. Сам запущенный Client пока передаёт Runtime resolver свой
+`installationRoot`, который
+`src/runtime/resolveCurrentClientInstallationRoot.js` выводит из текущего
+`<ASR root>/Clients/<client version>/resources` layout. Это единственное место,
+знающее эту геометрию; оно не выбирает Client, а Runtime resolver не зависит от
+глубины Client-каталога и не получает путь Runtime от пользователя.
 `ASR_PYTHON` — явный development override с полным
 путём к интерпретатору. Packaged production Client его игнорирует и использует
 только Python из определённого приложением Runtime.
@@ -28,14 +30,14 @@ Client-каталога не зависит и позже может получ�
 `manifestFormatVersion`, `runtimeId`, `runtimeVersion` и `runtimeApiVersion`;
 пользователь не создаёт и не редактирует этот файл. Runtime физически отделён от
 Client package; resolver выводит его путь из `installationRoot`, а не из
-пользовательской настройки. Client можно заменить независимо от Runtime. Runtime
-пока устанавливает или восстанавливает только Full Offline Setup; Runtime auto-update
-и Client updater не реализованы.
+пользовательской настройки. Client можно заменить независимо от Runtime.
+Реализованный local/offline Client Update использует уже установленный Runtime,
+проверяя совместимость candidate; Runtime по-прежнему устанавливает или
+восстанавливает только Full Offline Setup. Runtime auto-update не реализован.
 
-Текущая `runtimeApiVersion` отражает реализованную проверку Runtime и сама по
-себе не является выбранным compatibility contract для будущего Client update.
-Принципиальные границы этого lifecycle, включая обязательную проверку
-совместимости candidate Client с установленным Runtime, описаны в
+Текущая `runtimeApiVersion` — реализованный compatibility contract для
+local/offline Client Update: manifest candidate обязан ей соответствовать.
+Принципиальные границы lifecycle описаны в
 [Client Update Lifecycle](../client-update/module.md).
 
 У embedded Python есть `python311._pth`, который полностью задаёт `sys.path`.

@@ -42,13 +42,17 @@ Client, тяжёлый ASR Runtime и пользовательские данн�
 Client. Полный lifecycle установки, repair и удаления описан в
 [документе упаковки](../packaging/module.md).
 
-Client updater, автоматическая доставка обновлений по сети, update feed и
-Runtime auto-update пока не реализованы. Возможность относительно небольших
-интернет- и offline-обновлений Client остаётся утверждённым направлением, а не
-описанием текущего механизма. Его принципиальная архитектура, включая separation
-от Runtime и trust boundary, зафиксирована в
-[Client Update Lifecycle](../client-update/module.md); конкретная реализация
-остаётся будущей работой.
+Реализован local/offline Client Update: установленный Client выбирает подписанный
+`.asrupdate` из локальной файловой системы, а stable launcher передаёт запуск
+fixed Coordinator, который выбирает Client через `InstallationState`. Coordinator
+проверяет package, готовит side-by-side candidate и владеет v2
+prepare/activate/READY/commit/rollback. Подробные границы, ограничения и
+validation evidence — в [Client Update Lifecycle](../client-update/module.md) и
+его [матрице](../client-update/validation.md).
+
+Автоматическая доставка обновлений по сети, update feed, Runtime update,
+Coordinator/launcher self-update и Full Setup handoff в эту transaction пока не
+реализованы.
 
 Основная работа ASR остаётся локальной и не должна зависеть от интернета.
 
