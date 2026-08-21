@@ -13,6 +13,7 @@ const {
 } = require("./update/installationState");
 
 const installationStateMode = process.argv.find((argument) => argument.startsWith("--asr-installation-state="));
+const ipcSpikeClientBehavior = process.argv.find((argument) => argument.startsWith("--asr-ipc-spike-client-behavior="));
 
 async function runInstallationStateMode(argument) {
   const mode = argument.slice("--asr-installation-state=".length);
@@ -487,7 +488,9 @@ ipcMain.handle("dialog:save-transcript", async (_event, transcript) => {
   return filePath;
 });
 
-if (installationStateMode) {
+if (ipcSpikeClientBehavior) {
+  require("./ipcSpikeClient").runIpcSpikeClient({ app });
+} else if (installationStateMode) {
   runInstallationStateMode(installationStateMode)
     .then(() => app.exit(0))
     .catch((error) => {

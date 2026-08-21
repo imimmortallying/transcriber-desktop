@@ -11,13 +11,8 @@ const { inject } = require("postject");
 const projectRoot = path.resolve(__dirname, "..");
 const buildDirectory = path.join(projectRoot, "build");
 const coordinatorDirectory = path.join(buildDirectory, "coordinator");
-const stagingDirectory = path.join(coordinatorDirectory, "staging");
 const coordinatorEntryPoint = path.join(projectRoot, "src", "coordinator", "main.js");
-const bundledEntryPoint = path.join(stagingDirectory, "coordinator.cjs");
-const seaConfigPath = path.join(stagingDirectory, "sea-config.json");
-const seaBlobPath = path.join(stagingDirectory, "coordinator.blob");
 const coordinatorOutput = path.join(coordinatorDirectory, "asr-coordinator.exe");
-const stagedCoordinatorOutput = path.join(stagingDirectory, "asr-coordinator.exe");
 const nodeVersion = "v24.16.0";
 const nodeArchiveUrl = `https://nodejs.org/download/release/${nodeVersion}/win-x64/node.exe`;
 const nodeExecutableSha256 = "b3094d0b49f9ad602262a9921551737bb97637c05dd357a06ae98188d7290aa3";
@@ -156,16 +151,26 @@ function run(command, argumentsList, options = {}) {
   });
 }
 
-async function buildCoordinator() {
+async function buildCoordinator({
+  entryPoint = coordinatorEntryPoint,
+  outputPath = coordinatorOutput,
+} = {}) {
+  const outputDirectory = path.dirname(outputPath);
+  const outputStagingDirectory = path.join(outputDirectory, "staging");
+  const outputBundledEntryPoint = path.join(outputStagingDirectory, "coordinator.cjs");
+  const outputSeaConfigPath = path.join(outputStagingDirectory, "sea-config.json");
+  const outputSeaBlobPath = path.join(outputStagingDirectory, "coordinator.blob");
+  const stagedOutput = path.join(outputStagingDirectory, "asr-coordinator.exe");
   const nodeHost = await ensureNodeHost();
-  await rm(coordinatorOutput, { force: true });
-  await rm(stagingDirectory, { recursive: true, force: true });
-  await mkdir(stagingDirectory, { recursive: true });
+  await mkdir(outputDirectory, { recursive: true });
+  await rm(outputPath, { force: true });
+  await rm(outputStagingDirectory, { recursive: true, force: true });
+  await mkdir(outputStagingDirectory, { recursive: true });
 
   try {
     await build({
-      entryPoints: [coordinatorEntryPoint],
-      outfile: bundledEntryPoint,
+      entryPoints: [entryPoint],
+      outfile: outputBundledEntryPoint,
       bundle: true,
       format: "cjs",
       platform: "node",
@@ -173,10 +178,10 @@ async function buildCoordinator() {
       logLevel: "silent",
     });
     await writeFile(
-      seaConfigPath,
+      outputSeaConfigPath,
       `${JSON.stringify({
-        main: bundledEntryPoint,
-        output: seaBlobPath,
+        main: outputBundledEntryPoint,
+        output: outputSeaBlobPath,
         mainFormat: "commonjs",
         disableExperimentalSEAWarning: true,
         useSnapshot: false,
@@ -185,21 +190,21 @@ async function buildCoordinator() {
       }, null, 2)}\n`,
       "utf8",
     );
-    await run(nodeHost, ["--experimental-sea-config", seaConfigPath]);
-    await copyFile(nodeHost, stagedCoordinatorOutput);
-    await inject(stagedCoordinatorOutput, "NODE_SEA_BLOB", await readFile(seaBlobPath), {
+    await run(nodeHost, ["--experimental-sea-config", outputSeaConfigPath]);
+    await copyFile(nodeHost, stagedOutput);
+    await inject(stagedOutput, "NODE_SEA_BLOB", await readFile(outputSeaBlobPath), {
       sentinelFuse: seaFuse,
     });
-    await transformToWindowsGuiExecutable(stagedCoordinatorOutput);
-    const outputInfo = await stat(stagedCoordinatorOutput);
-    const { subsystem } = inspectPeSubsystem(await readFile(stagedCoordinatorOutput));
+    await transformToWindowsGuiExecutable(stagedOutput);
+    const outputInfo = await stat(stagedOutput);
+    const { subsystem } = inspectPeSubsystem(await readFile(stagedOutput));
     if (!outputInfo.isFile() || outputInfo.size === 0 || subsystem !== windowsGuiSubsystem) {
       throw new Error("Coordinator SEA build did not produce an executable.");
     }
-    await rename(stagedCoordinatorOutput, coordinatorOutput);
-    return coordinatorOutput;
+    await rename(stagedOutput, outputPath);
+    return outputPath;
   } finally {
-    await rm(stagingDirectory, { recursive: true, force: true });
+    await rm(outputStagingDirectory, { recursive: true, force: true });
   }
 }
 
