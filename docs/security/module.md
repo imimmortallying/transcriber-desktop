@@ -263,8 +263,8 @@ Client health.
   corrupted archive не используется. Machine-specific electron-builder cache и
   undocumented/private electron-builder internals не являются provenance compiler.
   Этот control защищает provenance и integrity compiler, но не устанавливает
-  cryptographic trust для установленных Client releases; их future verification
-  остаётся частью Client Update Lifecycle. Изменение compiler origin, version,
+  cryptographic trust для установленных Client releases; their signed local/offline
+  verification is part of the Client Update Lifecycle. Изменение compiler origin, version,
   checksum или acquisition mechanism security-relevant и требует обновления
   этого документа. `scripts/buildCoordinator.js` получает только pinned
   Windows x64 Node `v24.16.0` по fixed official `nodejs.org` release URL,
@@ -304,10 +304,11 @@ Client health.
 
 ## Будущие сетевые компоненты
 
-Обновления приложения, добровольная отправка диагностики/обратной связи и
+Online update delivery, добровольная отправка диагностики/обратной связи и
 возможное лицензирование создадут новые сетевые trust boundaries. Их нужно
-проектировать вместе с security model; ни один из этих компонентов сейчас не
-реализован.
+проектировать вместе с security model; эти сетевые компоненты сейчас не
+реализованы. Реализованный local/offline Client Update не создаёт сетевой
+trust boundary.
 
 ### Updater
 
@@ -324,12 +325,14 @@ Client health.
   активируется; previous known-good сохраняется до commit, а отсутствие READY
   приводит к rollback. Полная принципиальная модель зафиксирована в
   [Client Update Lifecycle](../client-update/module.md).
-- **Implementation / Verification:** не выбраны. Перед реализацией должны быть
-  зафиксированы cryptographic/signing scheme и key model, доверенный источник,
-  протокол и метаданные, storage, IPC для READY, persistent state/recovery,
-  пользовательское управление, offline-поведение и проверка недоверенного
-  результата. Ни одна из этих implementation-level деталей не выводится из
-  текущей документации.
+- **Implementation / Verification:** the First Working local/offline Client
+  Update implements the signed-package trust model, persistent v2 transaction,
+  inherited private READY IPC and deterministic rollback/recovery. Its real
+  SEA/Electron artifact evidence is recorded in the
+  [validation matrix](../client-update/validation.md). Online acquisition,
+  hosted release delivery, Full Setup handoff, self-update and update UX remain
+  explicitly deferred; this subsection makes no priority or design choice for
+  them.
 
 ### Диагностика, обратная связь и лицензирование
 

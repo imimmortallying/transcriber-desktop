@@ -12,6 +12,16 @@ combined upgrade по-прежнему вне этого блока.
 [behavioral validation matrix](validation.md); она не определяет архитектуру
 следующего milestone.
 
+## Current checkpoint — First Working local/offline Client Update
+
+This checkpoint is complete. It covers a locally supplied signed `.asrupdate`,
+Coordinator-owned side-by-side staging, durable v2 prepare/activate/commit/
+rollback state, correlated inherited-IPC READY from the packaged Client, and
+ordinary launch from the resulting durable selection. It does not make Full
+Setup an update-transaction owner or introduce an acquisition service. The
+explicitly deferred directions, without an implied priority, are listed in
+[Намеренно вне scope](#намеренно-вне-scope).
+
 В текущем Full Setup чистая Client installation размещается в
 `<ASR root>/Clients/<client version>`, а stable infrastructure — в ASR root.
 Windows shortcuts указывают на root-level launcher; он валидирует fixed
@@ -82,8 +92,9 @@ compatibility check происходят до staging и activation. Больш�
 Slice 5 реализует staged initial publication и two-slot snapshots только для
 steady schema v1. File flush + rename дают process/interrupted-write recovery
 при normal Windows filesystem assumptions; это не доказанная гарантия hard
-power-loss durability directory metadata. Transactional activation/recovery
-format остаётся будущей работой.
+power-loss durability directory metadata. Transactional activation/recovery is
+implemented through schema v2; this statement does not claim stronger
+hard-power-loss atomicity.
 
 ## Термины и ownership
 
@@ -98,8 +109,9 @@ format остаётся будущей работой.
 | **working Client** | Выполняет user-facing flow, discovery/acquisition и подготовку update; перед activation завершает работу и делает handoff stable infrastructure. |
 
 После handoff transaction обязана завершаться или восстанавливаться без старого
-Client process. Конкретные launcher/updater executables и их размещение не
-зафиксированы.
+Client process. The stable executables are fixed: root `asr-launch.exe` invokes
+`<ASR root>/Coordinator/asr-coordinator.exe`; Coordinator owns the explicit
+local/offline transaction commands.
 
 ## Ownership этапов
 
@@ -223,9 +235,16 @@ transcription correctness or long-term health.
 
 ## Намеренно вне scope
 
-Этот milestone не проектирует: Runtime update lifecycle, combined upgrade,
-updater self-update, online update channels, staged rollout, delta updates, retention
-policy, полноценную migration strategy application data, конкретный online
-backend или storage, Full Setup handoff/cross-version delivery, candidate code
-signing or Authenticode. Архитектурные границы не должны закрывать путь к
-этим возможностям, но первая реализация остаётся простой.
+This completed checkpoint explicitly defers the following directions, without
+selecting their order or design:
+
+- Runtime update lifecycle and combined Client/Runtime upgrade;
+- Coordinator/launcher self-update;
+- online acquisition channels, release hosting, staged rollout and delta updates;
+- retention policy and a complete application-data migration strategy;
+- online backend or storage;
+- Full Setup handoff and cross-version delivery through this transaction;
+- candidate code signing and Authenticode.
+
+The implemented boundaries do not preclude these directions, but this first
+local/offline lifecycle remains intentionally narrow.

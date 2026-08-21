@@ -73,8 +73,9 @@ Client, Runtime и Coordinator, но устанавливает их физич�
 replaceable component: служебный uninstall с `--updated` удаляет только текущий
 versioned Client, а Runtime и Coordinator остаются. Обычный ручной uninstall удаляет этот Client
 вместе с sibling `Runtime`, `Runtime.staging`, `Runtime.previous` и known Coordinator files; затем пытается
-без рекурсии удалить пустые `Coordinator`, `Clients` и ASR root. Runtime installer, Runtime
-auto-update и Client updater пока не реализованы.
+без рекурсии удалить пустые `Coordinator`, `Clients` и ASR root. Runtime installer и Runtime
+auto-update пока не реализованы. Local/offline Client Update реализован отдельно;
+Full Setup handoff в этот transaction остаётся deferred.
 
 Full Setup размещает standalone `asr-launch.exe` непосредственно в ASR root и
 `Coordinator/asr-coordinator.exe` рядом с ним. Desktop и Start Menu shortcuts
