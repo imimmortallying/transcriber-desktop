@@ -6,6 +6,8 @@ const CLIENT_EXECUTABLE = "local-asr-prototype.exe";
 const MAX_STATE_FILE_BYTES = 64 * 1024;
 const SCHEMA_VERSION = 1;
 const SCHEMA_VERSION_V2 = 2;
+const MAX_LAUNCH_SCHEMA_VERSION = SCHEMA_VERSION_V2;
+const INSPECT_MAX_SCHEMA_ARGUMENT = "--asr-installation-state-max-schema=";
 const STATE_DIRECTORY = "InstallationState";
 const SLOT_NAMES = ["slot-a.json", "slot-b.json"];
 const BOOTSTRAP_DIRECTORY_PREFIX = "InstallationState.bootstrap-";
@@ -410,6 +412,45 @@ async function readLaunchInstallationState(installationRoot, options = {}) {
   return readInstallationStateWithSchemas(installationRoot, [SCHEMA_VERSION, SCHEMA_VERSION_V2], options);
 }
 
+function parseInspectMaxSchema(argumentsList) {
+  const capabilityArguments = argumentsList.filter((argument) => argument.startsWith(INSPECT_MAX_SCHEMA_ARGUMENT));
+  if (capabilityArguments.length > 1) {
+    fail("INVALID_INSPECT_CAPABILITY", "Installation-state inspect capability was supplied more than once.");
+  }
+  if (capabilityArguments.length === 0) {
+    return SCHEMA_VERSION;
+  }
+
+  const rawValue = capabilityArguments[0].slice(INSPECT_MAX_SCHEMA_ARGUMENT.length);
+  if (!/^[1-9]\d*$/.test(rawValue)) {
+    fail("INVALID_INSPECT_CAPABILITY", "Installation-state inspect capability is invalid.");
+  }
+  const maxSchemaVersion = Number(rawValue);
+  if (!Number.isSafeInteger(maxSchemaVersion) || maxSchemaVersion > MAX_LAUNCH_SCHEMA_VERSION) {
+    fail("INVALID_INSPECT_CAPABILITY", "Installation-state inspect capability is unsupported.");
+  }
+  return maxSchemaVersion;
+}
+
+async function inspectInstallationStateForSetup(installationRoot, argumentsList, options = {}) {
+  const maxSchemaVersion = parseInspectMaxSchema(argumentsList);
+  const stateResult = await readLaunchInstallationState(installationRoot, options);
+  if (stateResult.kind === "unsupported" || stateResult.kind === "uninspectable") {
+    return stateResult;
+  }
+
+  const hasSchemaV2 = stateResult.slots.some(
+    (slot) => slot.kind === "valid" && slot.state.schemaVersion === SCHEMA_VERSION_V2,
+  );
+  if (!hasSchemaV2) {
+    return { kind: "compatible", stateResult };
+  }
+  if (maxSchemaVersion < SCHEMA_VERSION_V2) {
+    return { kind: "setup-schema-capability-insufficient", stateResult };
+  }
+  return { kind: "v2-state-requires-full-setup-mutation-authority", stateResult };
+}
+
 function isReparsePoint(info) {
   return info.isSymbolicLink();
 }
@@ -623,7 +664,9 @@ module.exports = {
   CLIENT_EXECUTABLE,
   InstallationStateError,
   INVALID_DIRECTORY_PREFIX,
+  INSPECT_MAX_SCHEMA_ARGUMENT,
   MAX_STATE_FILE_BYTES,
+  MAX_LAUNCH_SCHEMA_VERSION,
   SCHEMA_VERSION,
   SCHEMA_VERSION_V2,
   SLOT_NAMES,
@@ -631,9 +674,11 @@ module.exports = {
   assertSelectedClient,
   classifySlot,
   derivePackagedInstallation,
+  inspectInstallationStateForSetup,
   normalizeState,
   normalizeStateV2,
   parseJsonWithUniqueKeys,
+  parseInspectMaxSchema,
   publishInitialState,
   readInstallationState,
   readLaunchInstallationState,

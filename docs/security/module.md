@@ -116,8 +116,12 @@ security audit и не утверждает наличие уязвимости 
   Schema v1 accepts exact typed fields, a positive generation and equal
   active/known-good single-segment Client keys. Coordinator's explicit readonly
   launch reader additionally accepts only protocol-valid schema-v2 steady,
-  prepared or activated state, while Full Setup retains its v1-only reader and
-  mutation authority. It derives Client paths only as `<root>/Clients/<key>`, validates canonical containment, rejects reparse
+  prepared or activated state. Before replacement Full Setup's installed-Client
+  inspect receives a bounded build-time deployed-schema capability (`2`);
+  absent capability is legacy v1. The comparison is readonly: known v2 either
+  reports insufficient deployed capability or requires future v2 mutation
+  authority, while Full Setup bootstrap/provision/reconcile and every writer
+  remain v1-only. It derives Client paths only as `<root>/Clients/<key>`, validates canonical containment, rejects reparse
   points and requires the expected Client executable. Reader never scans
   `Clients`; unsupported schema, oversized/uninspectable slot and duplicate JSON
   keys in either slot win over otherwise valid v1 and remain read-only. Initial

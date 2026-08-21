@@ -2,6 +2,7 @@
 
 !ifndef BUILD_UNINSTALLER
   !include "${BUILD_RESOURCES_DIR}\runtime-size.nsh"
+  !define ASR_INSTALLATION_STATE_DEPLOYED_SCHEMA_MAX 2
 
   Var legacyInstallLocation
   Var isExistingClientInstallation
@@ -209,13 +210,19 @@
     StrCpy $installationStateClientExecutable "$legacyInstallLocation\${APP_FILENAME}.exe"
     IfFileExists "$installationStateClientExecutable" 0 installationStatePreflightUnavailable
     ClearErrors
-    ExecWait '"$installationStateClientExecutable" --asr-installation-state=inspect' $installationStateExitCode
+    ExecWait '"$installationStateClientExecutable" --asr-installation-state=inspect --asr-installation-state-max-schema=${ASR_INSTALLATION_STATE_DEPLOYED_SCHEMA_MAX}' $installationStateExitCode
     IfErrors installationStatePreflightUnavailable
     StrCmp $installationStateExitCode "0" installationStatePreflightDone
     StrCmp $installationStateExitCode "21" installationStatePreflightUnsupported installationStatePreflightCheckUninspectable
 
     installationStatePreflightCheckUninspectable:
-    StrCmp $installationStateExitCode "23" installationStatePreflightUninspectable installationStatePreflightUnavailable
+    StrCmp $installationStateExitCode "23" installationStatePreflightUninspectable installationStatePreflightCheckCapability
+
+    installationStatePreflightCheckCapability:
+    StrCmp $installationStateExitCode "24" installationStatePreflightCapabilityInsufficient installationStatePreflightCheckMutationAuthority
+
+    installationStatePreflightCheckMutationAuthority:
+    StrCmp $installationStateExitCode "25" installationStatePreflightMutationAuthorityRequired installationStatePreflightUnavailable
 
     installationStatePreflightUnsupported:
       MessageBox MB_OK|MB_ICONSTOP "ASR installation state was created by a newer incompatible version.$\r$\nInstall a matching or newer Full Setup."
@@ -227,6 +234,14 @@
 
     installationStatePreflightUninspectable:
       MessageBox MB_OK|MB_ICONSTOP "ASR installation state is ambiguous or cannot be inspected safely.$\r$\nInstall a matching or newer Full Setup."
+      Quit
+
+    installationStatePreflightCapabilityInsufficient:
+      MessageBox MB_OK|MB_ICONSTOP "This Full Setup cannot safely deploy infrastructure for the existing ASR installation state.$\r$\nInstall a matching or newer Full Setup."
+      Quit
+
+    installationStatePreflightMutationAuthorityRequired:
+      MessageBox MB_OK|MB_ICONSTOP "The existing ASR installation state requires a Full Setup with schema v2 recovery authority.$\r$\nInstall a matching or newer Full Setup."
       Quit
 
     installationStatePreflightDone:

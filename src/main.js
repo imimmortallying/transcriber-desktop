@@ -7,7 +7,7 @@ const { getCurrentRuntime } = require("./runtime/resolveRuntime");
 const {
   InstallationStateError,
   derivePackagedInstallation,
-  readInstallationState,
+  inspectInstallationStateForSetup,
   reconcileInstallationState,
   removeProvisioningStateArtifacts,
 } = require("./update/installationState");
@@ -26,12 +26,18 @@ async function runInstallationStateMode(argument) {
     return;
   }
   if (mode === "inspect") {
-    const result = await readInstallationState(installationRoot);
+    const result = await inspectInstallationStateForSetup(installationRoot, process.argv);
     if (result.kind === "unsupported") {
       throw new InstallationStateError("UNSUPPORTED_SCHEMA", "Installation state was created by a newer incompatible version.");
     }
     if (result.kind === "uninspectable") {
       throw new InstallationStateError("UNINSPECTABLE_STATE", "Installation state cannot be safely inspected.");
+    }
+    if (result.kind === "setup-schema-capability-insufficient") {
+      throw new InstallationStateError("SETUP_SCHEMA_CAPABILITY_INSUFFICIENT", "The Full Setup infrastructure cannot safely consume the existing installation state schema.");
+    }
+    if (result.kind === "v2-state-requires-full-setup-mutation-authority") {
+      throw new InstallationStateError("V2_STATE_REQUIRES_FULL_SETUP_MUTATION_AUTHORITY", "The existing schema v2 installation state requires a Full Setup with schema v2 mutation authority.");
     }
     return;
   }
@@ -490,7 +496,15 @@ if (installationStateMode) {
         app.exit(21);
         return;
       }
-      app.exit(error instanceof InstallationStateError && error.code === "UNINSPECTABLE_STATE" ? 23 : 22);
+      if (error instanceof InstallationStateError && error.code === "UNINSPECTABLE_STATE") {
+        app.exit(23);
+        return;
+      }
+      if (error instanceof InstallationStateError && error.code === "SETUP_SCHEMA_CAPABILITY_INSUFFICIENT") {
+        app.exit(24);
+        return;
+      }
+      app.exit(error instanceof InstallationStateError && error.code === "V2_STATE_REQUIRES_FULL_SETUP_MUTATION_AUTHORITY" ? 25 : 22);
     });
 } else {
   app.whenReady().then(() => {

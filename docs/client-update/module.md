@@ -184,11 +184,16 @@ candidate while retaining a different known-good Client.
 This slice adds strict v2 normalization, semantic comparison and one explicit
 readonly launch reader. Coordinator uses that launch reader to accept valid v1
 or v2 and still validates and launches only `activeClient`; transaction fields
-do not select a Client or cause lifecycle actions. The default slot reader used
-by Full Setup remains v1-only, so inspect, bootstrap, provision and reconcile
-still treat v2 as unsupported and write v1 only. No migration, prepare,
-activation, READY, commit or rollback behavior is implemented. Full Setup
-compatibility remains required before a future writer may publish v2.
+do not select a Client or cause lifecycle actions. Full Setup preflight now
+declares the maximum schema its deployed infrastructure understands (`2`); an
+absent declaration is conservatively treated as legacy schema-v1 capability.
+The installed Client performs that comparison readonly before replacement: a
+known v2 state returns either capability-insufficient (`24`) or v2
+mutation-authority-required (`25`), so it is never passed to the current
+Full Setup mutation path. Bootstrap, provision, reconcile and every writer
+remain v1-only and write v1 only. No migration, prepare, activation, READY,
+commit or rollback behavior is implemented. Full Setup v2 mutation/recovery
+authority remains required before a future writer may publish v2.
 
 ## Failure, rollback и recovery
 

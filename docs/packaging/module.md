@@ -92,11 +92,16 @@ launcher и known Coordinator files только после существующ
 После успешной установки Client, Runtime, Coordinator, launcher и shortcuts Setup запускает
 internal non-UI mode установленного Client. Он временно provision/reconcile-ит
 root-owned `InstallationState`; normal Electron window не открывается. Before
-replacement existing registered Client Setup read-only проверяет state тем же
-protocol. Unknown/newer schema, oversized/uninspectable state или duplicate JSON
-keys останавливают Setup до replacement и сохраняют Client, Runtime, Coordinator, launcher,
-shortcuts, registry и state bytes. NSIS не парсит JSON,
-а launcher по-прежнему валидирует только fixed Coordinator target.
+replacement existing registered Client Setup read-only проверяет state и передаёт
+build-time capability deployed infrastructure (`max schema 2`). Отсутствующий
+capability argument трактуется установленным новым Client как legacy schema-v1
+Setup. Unknown/newer schema, oversized/uninspectable state или duplicate JSON
+keys, недостаточная capability (`24`) и known v2 state without Full Setup v2
+mutation authority (`25`) останавливают Setup до replacement и сохраняют Client,
+Runtime, Coordinator, launcher, shortcuts, registry и state bytes. Current
+bootstrap/provision/reconcile remain v1-only, so even a v2-capable deployed
+Coordinator does not authorize Full Setup v2 mutation or transaction recovery.
+NSIS не парсит JSON, а launcher по-прежнему валидирует только fixed Coordinator target.
 
 `Runtime.staging` и `Runtime.previous` ниже относятся только к реализованной
 доставке Runtime внутри Full Offline Setup. Они не задают будущий lifecycle

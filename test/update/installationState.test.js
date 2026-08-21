@@ -5,14 +5,17 @@ const path = require("node:path");
 const test = require("node:test");
 const {
   CLIENT_EXECUTABLE,
+  INSPECT_MAX_SCHEMA_ARGUMENT,
   InstallationStateError,
   MAX_STATE_FILE_BYTES,
   SCHEMA_VERSION_V2,
   SLOT_NAMES,
   STATE_DIRECTORY,
   assertSelectedClient,
+  inspectInstallationStateForSetup,
   normalizeState,
   normalizeStateV2,
+  parseInspectMaxSchema,
   publishInitialState,
   readInstallationState,
   readLaunchInstallationState,
@@ -233,6 +236,101 @@ test("launch reader fails closed for invalid v2 and future schemas", async () =>
     });
     assert.equal((await readLaunchInstallationState(root)).kind, "unsupported");
   });
+});
+
+test("Setup capability inspection preserves absent and v1 state for legacy and declared capabilities", async () => {
+  await withInstallation(async (root) => {
+    for (const argumentsList of [[], [`${INSPECT_MAX_SCHEMA_ARGUMENT}1`], [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`]]) {
+      assert.equal((await inspectInstallationStateForSetup(root, argumentsList)).kind, "compatible");
+    }
+
+    const v1 = stateForVersion("0.1.0", 1);
+    await writeSlot(root, SLOT_NAMES[0], v1);
+    await writeSlot(root, SLOT_NAMES[1], v1);
+    for (const argumentsList of [[], [`${INSPECT_MAX_SCHEMA_ARGUMENT}1`], [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`]]) {
+      assert.equal((await inspectInstallationStateForSetup(root, argumentsList)).kind, "compatible");
+    }
+  });
+});
+
+test("Setup capability inspection stops readonly on every valid v2 state", async () => {
+  await withInstallation(async (root) => {
+    const cases = [
+      [stateV2(), [], "setup-schema-capability-insufficient"],
+      [stateV2(), [`${INSPECT_MAX_SCHEMA_ARGUMENT}1`], "setup-schema-capability-insufficient"],
+      [stateV2(), [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`], "v2-state-requires-full-setup-mutation-authority"],
+      [preparedStateV2(), [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`], "v2-state-requires-full-setup-mutation-authority"],
+      [activatedStateV2(), [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`], "v2-state-requires-full-setup-mutation-authority"],
+    ];
+    for (const [state, argumentsList, expectedKind] of cases) {
+      await writeSlot(root, SLOT_NAMES[0], state);
+      await writeSlot(root, SLOT_NAMES[1], state);
+      const slotPaths = SLOT_NAMES.map((slotName) => path.join(root, STATE_DIRECTORY, slotName));
+      const before = await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath)));
+      assert.equal((await inspectInstallationStateForSetup(root, argumentsList)).kind, expectedKind);
+      assert.deepEqual(await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath))), before);
+    }
+
+    await writeSlot(root, SLOT_NAMES[0], stateForVersion("0.1.0", 1));
+    await writeSlot(root, SLOT_NAMES[1], stateV2());
+    assert.equal(
+      (await inspectInstallationStateForSetup(root, [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`])).kind,
+      "v2-state-requires-full-setup-mutation-authority",
+    );
+  });
+});
+
+test("Setup capability inspection preserves unsupported and uninspectable precedence", async () => {
+  await withInstallation(async (root) => {
+    const slotPaths = SLOT_NAMES.map((slotName) => path.join(root, STATE_DIRECTORY, slotName));
+    await writeSlot(root, SLOT_NAMES[0], {
+      schemaVersion: 3,
+      generation: 1,
+      activeClient: { version: "0.1.0" },
+      knownGoodClient: { version: "0.1.0" },
+    });
+    await writeSlot(root, SLOT_NAMES[1], stateV2());
+    const unsupportedBefore = await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath)));
+    assert.equal((await inspectInstallationStateForSetup(root, [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`])).kind, "unsupported");
+    assert.deepEqual(await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath))), unsupportedBefore);
+
+    await writeSlot(root, SLOT_NAMES[0], stateV2({
+      updateTransaction: { phase: "prepared", candidateClient: { version: "0.1.0" } },
+    }));
+    const invalidBefore = await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath)));
+    assert.equal((await inspectInstallationStateForSetup(root, [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`])).kind, "uninspectable");
+    assert.deepEqual(await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath))), invalidBefore);
+
+    await writeRawSlot(root, SLOT_NAMES[0], '{"schemaVersion":2,"schemaVersion":1}');
+    assert.equal((await inspectInstallationStateForSetup(root, [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`])).kind, "uninspectable");
+
+    const slotPath = path.join(root, STATE_DIRECTORY, SLOT_NAMES[0]);
+    await writeSlot(root, SLOT_NAMES[0], stateV2());
+    assert.equal(
+      (await inspectInstallationStateForSetup(root, [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`], { fsApi: withReparseObject(slotPath) })).kind,
+      "uninspectable",
+    );
+  });
+});
+
+test("Setup capability argument is canonical, singular, and bounded", () => {
+  assert.equal(parseInspectMaxSchema([]), 1);
+  assert.equal(parseInspectMaxSchema([`${INSPECT_MAX_SCHEMA_ARGUMENT}1`]), 1);
+  assert.equal(parseInspectMaxSchema([`${INSPECT_MAX_SCHEMA_ARGUMENT}2`]), 2);
+  for (const argumentsList of [
+    [`${INSPECT_MAX_SCHEMA_ARGUMENT}0`],
+    [`${INSPECT_MAX_SCHEMA_ARGUMENT}-1`],
+    [`${INSPECT_MAX_SCHEMA_ARGUMENT}01`],
+    [`${INSPECT_MAX_SCHEMA_ARGUMENT}two`],
+    [`${INSPECT_MAX_SCHEMA_ARGUMENT}9007199254740992`],
+    [`${INSPECT_MAX_SCHEMA_ARGUMENT}3`],
+    [`${INSPECT_MAX_SCHEMA_ARGUMENT}1`, `${INSPECT_MAX_SCHEMA_ARGUMENT}2`],
+  ]) {
+    assert.throws(
+      () => parseInspectMaxSchema(argumentsList),
+      (error) => error instanceof InstallationStateError && error.code === "INVALID_INSPECT_CAPABILITY",
+    );
+  }
 });
 
 test("Client keys reject traversal, separators, and arbitrary paths", () => {

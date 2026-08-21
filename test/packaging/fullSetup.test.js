@@ -13,6 +13,10 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   const coordinatorBuilder = await readFile(path.join(projectRoot, "scripts", "buildCoordinator.js"), "utf8");
   const runtimeArchiveBuilder = await readFile(path.join(projectRoot, "scripts", "buildRuntimeArchive.js"), "utf8");
   const mainSource = await readFile(path.join(projectRoot, "src", "main.js"), "utf8");
+  const installationStateSource = await readFile(path.join(projectRoot, "src", "update", "installationState.js"), "utf8");
+  const coordinatorSource = await readFile(path.join(projectRoot, "src", "coordinator", "main.js"), "utf8");
+  const installerTemplate = await readFile(path.join(projectRoot, "node_modules", "app-builder-lib", "templates", "nsis", "installer.nsi"), "utf8");
+  const installSectionTemplate = await readFile(path.join(projectRoot, "node_modules", "app-builder-lib", "templates", "nsis", "installSection.nsh"), "utf8");
   const customInit = installerScript.slice(
     installerScript.indexOf("!macro customInit"),
     installerScript.indexOf("!macro customPageAfterChangeDir"),
@@ -50,6 +54,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(coordinatorBuilder, /transformToWindowsGuiExecutable\(stagedCoordinatorOutput\)/);
 
   assert.match(installerScript, /!include "\$\{BUILD_RESOURCES_DIR\}\\runtime-size\.nsh"/);
+  assert.match(installerScript, /!define ASR_INSTALLATION_STATE_DEPLOYED_SCHEMA_MAX 2/);
   assert.match(installerScript, /SectionGetSize 0 \$0/);
   assert.match(installerScript, /IntOp \$0 \$0 \+ \$\{RUNTIME_UNPACKED_SIZE\}/);
   assert.match(installerScript, /StrCpy \$isForceCurrentInstall "1"/);
@@ -60,6 +65,8 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(customInit, /\$\{StdUtils\.GetParentPath\} \$0 "\$legacyInstallLocation"[\s\S]*\$\{GetFileName\} "\$0" \$1[\s\S]*StrCmp \$1 "Clients" 0 blockUnknownRegisteredLayout[\s\S]*\$\{GetFileName\} "\$legacyInstallLocation" \$1[\s\S]*StrCmp \$1 "" blockUnknownRegisteredLayout[\s\S]*IfFileExists "\$legacyInstallLocation\\Uninstall \$\{PRODUCT_FILENAME\}\.exe" existingClientLayout blockUnknownRegisteredLayout/);
   assert.match(customInit, /existingClientLayout:[\s\S]*\$\{StdUtils\.GetParentPath\} \$asrRootDirectory "\$0"[\s\S]*StrCmp \$asrRootDirectory "" blockUnknownRegisteredLayout/);
   assert.match(customInit, /existingClientLayout:[\s\S]*Call preflightInstallationState[\s\S]*StrCpy \$installationStateProvisioningMode "provision"/);
+  assert.match(installerTemplate, /Function \.onInit[\s\S]*!insertmacro customInit/);
+  assert.match(installSectionTemplate, /!insertmacro uninstallOldVersion SHELL_CONTEXT[\s\S]*!ifmacrodef customInstall[\s\S]*!insertmacro customInstall/);
   assert.doesNotMatch(customInit, /StrCmp \$0 "Client"/);
   assert.match(customInit, /Обнаружена предыдущая версия ASR в \$legacyInstallLocation/);
   assert.match(customInit, /Пользовательские данные и результаты при этом сохраняются\./);
@@ -143,14 +150,17 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /Function coordinatorFileIsSafe[\s\S]*"DIRECTORY"[\s\S]*"REPARSE_POINT"/);
   assert.match(installerScript, /CreateShortCut "\$newDesktopLink" "\$stableLauncherPath"/);
   assert.match(installerScript, /CreateShortCut "\$newStartMenuLink" "\$stableLauncherPath"/);
-  assert.match(installerScript, /Function preflightInstallationState[\s\S]*IfFileExists "\$asrRootDirectory\\InstallationState\\NUL" 0 installationStatePreflightDone[\s\S]*StrCpy \$installationStateExistedBeforeInstall "1"[\s\S]*--asr-installation-state=inspect[\s\S]*StrCmp \$installationStateExitCode "21" installationStatePreflightUnsupported installationStatePreflightCheckUninspectable[\s\S]*StrCmp \$installationStateExitCode "23" installationStatePreflightUninspectable/);
+  assert.match(installerScript, /Function preflightInstallationState[\s\S]*IfFileExists "\$asrRootDirectory\\InstallationState\\NUL" 0 installationStatePreflightDone[\s\S]*StrCpy \$installationStateExistedBeforeInstall "1"[\s\S]*--asr-installation-state=inspect --asr-installation-state-max-schema=\$\{ASR_INSTALLATION_STATE_DEPLOYED_SCHEMA_MAX\}[\s\S]*StrCmp \$installationStateExitCode "21" installationStatePreflightUnsupported installationStatePreflightCheckUninspectable[\s\S]*StrCmp \$installationStateExitCode "23" installationStatePreflightUninspectable[\s\S]*StrCmp \$installationStateExitCode "24" installationStatePreflightCapabilityInsufficient[\s\S]*StrCmp \$installationStateExitCode "25" installationStatePreflightMutationAuthorityRequired[\s\S]*installationStatePreflightCapabilityInsufficient:[\s\S]*Quit[\s\S]*installationStatePreflightMutationAuthorityRequired:[\s\S]*Quit/);
   assert.match(installerScript, /Function cleanupFailedInstallationState[\s\S]*StrCmp \$installationStateExistedBeforeInstall "1" installationStateCleanupDone[\s\S]*RMDir \/r "\$asrRootDirectory\\InstallationState"[\s\S]*installationStateCleanupDone:\s+Return/);
   assert.match(installerScript, /stableLauncherShortcutsDone:[\s\S]*--asr-installation-state=\$installationStateProvisioningMode[\s\S]*StrCmp \$installationStateExitCode "23" installationStateUninspectableAfterInstall[\s\S]*installationStateProvisioningFailure:[\s\S]*Call cleanupFailedInstallationState[\s\S]*Call cleanupFailedClientInstall/);
   assert.match(mainSource, /--asr-installation-state=/);
   assert.match(mainSource, /\["inspect", "reconcile", "provision", "cleanup"\]/);
   assert.match(mainSource, /derivePackagedInstallation\(\)/);
-  assert.match(mainSource, /mode === "inspect"[\s\S]*result\.kind === "uninspectable"[\s\S]*UNINSPECTABLE_STATE/);
-  assert.match(mainSource, /error\.code === "UNSUPPORTED_SCHEMA"[\s\S]*app\.exit\(21\)[\s\S]*error\.code === "UNINSPECTABLE_STATE" \? 23 : 22/);
+  assert.match(mainSource, /mode === "inspect"[\s\S]*inspectInstallationStateForSetup\(installationRoot, process\.argv\)[\s\S]*result\.kind === "setup-schema-capability-insufficient"[\s\S]*SETUP_SCHEMA_CAPABILITY_INSUFFICIENT[\s\S]*result\.kind === "v2-state-requires-full-setup-mutation-authority"[\s\S]*V2_STATE_REQUIRES_FULL_SETUP_MUTATION_AUTHORITY/);
+  assert.match(mainSource, /error\.code === "UNSUPPORTED_SCHEMA"[\s\S]*app\.exit\(21\)[\s\S]*error\.code === "UNINSPECTABLE_STATE"[\s\S]*app\.exit\(23\)[\s\S]*error\.code === "SETUP_SCHEMA_CAPABILITY_INSUFFICIENT"[\s\S]*app\.exit\(24\)[\s\S]*V2_STATE_REQUIRES_FULL_SETUP_MUTATION_AUTHORITY" \? 25 : 22/);
+  assert.match(installationStateSource, /const SCHEMA_VERSION = 1;[\s\S]*const SCHEMA_VERSION_V2 = 2;[\s\S]*const MAX_LAUNCH_SCHEMA_VERSION = SCHEMA_VERSION_V2;/);
+  assert.match(installationStateSource, /function readLaunchInstallationState[\s\S]*\[SCHEMA_VERSION, SCHEMA_VERSION_V2\]/);
+  assert.match(coordinatorSource, /readLaunchInstallationState[\s\S]*readState = readLaunchInstallationState/);
   assert.doesNotMatch(installerScript, /\$\{APP_EXECUTABLE_FILENAME\}/);
   assert.doesNotMatch(installerScript, /CreateShortCut "\$newDesktopLink" "\$INSTDIR\\\$\{APP_EXECUTABLE_FILENAME\}"/);
   assert.ok(
