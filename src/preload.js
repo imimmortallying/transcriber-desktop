@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("asr", {
+  getClientVersion: () => ipcRenderer.invoke("app:get-version"),
   selectMedia: () => ipcRenderer.invoke("dialog:select-media"),
   getResultsDirectory: () => ipcRenderer.invoke("results:get-directory"),
   selectResultsDirectory: () => ipcRenderer.invoke("results:select-directory"),
@@ -17,6 +18,8 @@ contextBridge.exposeInMainWorld("asr", {
   deleteRun: (segmentsPath) => ipcRenderer.invoke("run:delete", segmentsPath),
   selectUpdatePackage: () => ipcRenderer.invoke("update:select-package"),
   getUpdateStatus: () => ipcRenderer.invoke("update:status"),
+  checkOnlineUpdate: () => ipcRenderer.invoke("update:check-online"),
+  downloadOnlineUpdate: () => ipcRenderer.invoke("update:download-online"),
   prepareUpdate: (packagePath) => ipcRenderer.invoke("update:prepare", packagePath),
   cancelUpdate: () => ipcRenderer.invoke("update:cancel"),
   activateUpdate: () => ipcRenderer.invoke("update:activate"),

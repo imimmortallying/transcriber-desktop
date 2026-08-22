@@ -67,6 +67,17 @@ test("creates a provider-neutral Client release ZIP", async () => {
     );
     assert.equal(embeddedPackage.name, packageMetadata.name);
     assert.equal(embeddedPackage.version, packageMetadata.version);
+    const rendererIndex = extractFile(
+      path.join(extractionDirectory, "resources", "app.asar"),
+      path.join("src", "renderer", "index.html"),
+    ).toString("utf8");
+    const rendererSource = extractFile(
+      path.join(extractionDirectory, "resources", "app.asar"),
+      path.join("src", "renderer", "renderer.js"),
+    ).toString("utf8");
+    assert.match(rendererIndex, /id="client-version"/);
+    assert.match(rendererSource, /window\.asr\.getClientVersion\(\)/);
+    assert.match(rendererSource, /Client v\$\{await window\.asr\.getClientVersion\(\)\}/);
 
     const relativePaths = await listRelativePaths(extractionDirectory);
     const forbiddenPaths = [

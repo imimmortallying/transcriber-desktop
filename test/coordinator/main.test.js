@@ -131,7 +131,6 @@ test("Coordinator launches only selected active Client after spawn confirmation"
         detached: true,
         shell: false,
         stdio: "ignore",
-        windowsHide: true,
       },
     ]]);
     spawned.child.emit("spawn");
@@ -321,7 +320,6 @@ test("candidate READY requires the exact private IPC correlation", async () => {
     detached: true,
     shell: false,
     stdio: ["ignore", "ignore", "ignore", "ipc"],
-    windowsHide: true,
   });
   spawned.child.emit("message", {
     type: "asr-update-ready",

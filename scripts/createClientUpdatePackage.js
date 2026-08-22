@@ -12,7 +12,7 @@ const {
   canonicalJson,
   stageVerifiedClientUpdate,
 } = require("../src/update/clientUpdatePackage");
-const { PRODUCTION_TRUSTED_SIGNERS } = require("../src/update/productionTrust");
+const { loadProductionPrivateKey } = require("../src/update/productionTrust");
 const { validateClientKey } = require("../src/update/installationState");
 
 function usage() {
@@ -77,28 +77,24 @@ function archive(directory, outputPath) {
   });
 }
 
+async function moveNewOutput(stagedOutput, output, fsApi = fs) {
+  try {
+    await fsApi.rename(stagedOutput, output);
+  } catch (error) {
+    if (!error || error.code !== "EXDEV") {
+      throw error;
+    }
+    await fsApi.copyFile(stagedOutput, output, fs.constants.COPYFILE_EXCL);
+  }
+}
+
 async function createClientUpdatePackage(argumentsList = process.argv.slice(2)) {
   const options = readArguments(argumentsList);
-  const signer = PRODUCTION_TRUSTED_SIGNERS[options.keyId];
-  if (!signer) {
-    throw new Error("The key ID is not a pinned production signing key.");
-  }
   await assertNewOutput(options.output);
-  const [payload, privateKeyPem, rawPassphrase] = await Promise.all([
+  const [payload, privateKey] = await Promise.all([
     fs.readFile(options.input),
-    fs.readFile(options.privateKeyFile, "utf8"),
-    options.privateKeyPassphraseFile ? fs.readFile(options.privateKeyPassphraseFile, "utf8") : undefined,
+    loadProductionPrivateKey(options),
   ]);
-  const privateKey = crypto.createPrivateKey({
-    key: privateKeyPem,
-    format: "pem",
-    type: "pkcs8",
-    ...(rawPassphrase === undefined ? {} : { passphrase: rawPassphrase.replace(/\r?\n$/, "") }),
-  });
-  const derivedPublicKey = crypto.createPublicKey(privateKey).export({ type: "spki", format: "pem" });
-  if (derivedPublicKey !== signer.publicKeyPem) {
-    throw new Error("The supplied private key does not match the pinned production signing key.");
-  }
   const manifest = {
     formatVersion: UPDATE_PACKAGE_FORMAT_VERSION,
     keyId: options.keyId,
@@ -126,7 +122,7 @@ async function createClientUpdatePackage(argumentsList = process.argv.slice(2)) 
     if (canonicalJson(verified.manifest) !== canonicalJson(manifest)) {
       throw new Error("The generated update package did not retain its signed manifest.");
     }
-    await fs.rename(stagedOutput, options.output);
+    await moveNewOutput(stagedOutput, options.output);
     return { output: options.output, manifest };
   } finally {
     await fs.rm(temporaryDirectory, { recursive: true, force: true });
@@ -140,4 +136,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { createClientUpdatePackage, readArguments };
+module.exports = { createClientUpdatePackage, moveNewOutput, readArguments };

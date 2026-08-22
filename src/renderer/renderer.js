@@ -22,6 +22,8 @@ const fileName = document.querySelector("#file-name");
 const resultsDirectory = document.querySelector("#results-directory");
 const selectResultsDirectoryButton = document.querySelector("#select-results-directory");
 const revealResultsDirectoryButton = document.querySelector("#reveal-results-directory");
+const checkOnlineUpdateButton = document.querySelector("#check-online-update");
+const downloadOnlineUpdateButton = document.querySelector("#download-online-update");
 const selectUpdatePackageButton = document.querySelector("#select-update-package");
 const prepareUpdateButton = document.querySelector("#prepare-update");
 const activateUpdateButton = document.querySelector("#activate-update");
@@ -31,6 +33,7 @@ const updateStatus = document.querySelector("#update-status");
 const status = document.querySelector("#status");
 const editor = document.querySelector("#editor");
 const documentMode = document.querySelector("#document-mode");
+const clientVersion = document.querySelector("#client-version");
 
 const PROJECT_SCHEMA_VERSION = 1;
 const ICON_PATHS = {
@@ -56,6 +59,15 @@ let openSpeakerPopoverParagraphId = null;
 let selectedUpdatePackage = null;
 let preparedUpdate = null;
 let updateOperationInProgress = false;
+let availableOnlineUpdate = null;
+
+async function showClientVersion() {
+  try {
+    clientVersion.textContent = `Client v${await window.asr.getClientVersion()}`;
+  } catch {
+    clientVersion.textContent = "Client version unavailable";
+  }
+}
 
 function getSpeakerColor(index) {
   return `hsl(${(index * 137.508) % 360} 58% 42%)`;
@@ -129,7 +141,9 @@ function setRunning(running) {
 }
 
 function renderUpdateControls() {
-  selectUpdatePackageButton.disabled = updateOperationInProgress;
+  checkOnlineUpdateButton.disabled = updateOperationInProgress || Boolean(preparedUpdate);
+  downloadOnlineUpdateButton.disabled = updateOperationInProgress || Boolean(preparedUpdate) || !availableOnlineUpdate;
+  selectUpdatePackageButton.disabled = updateOperationInProgress || Boolean(preparedUpdate);
   prepareUpdateButton.disabled = updateOperationInProgress || !selectedUpdatePackage || Boolean(preparedUpdate);
   activateUpdateButton.disabled = updateOperationInProgress || isRunning || !preparedUpdate;
   cancelUpdateButton.disabled = updateOperationInProgress || isRunning || !preparedUpdate;
@@ -864,6 +878,47 @@ selectUpdatePackageButton.addEventListener("click", async () => {
   renderUpdateControls();
 });
 
+checkOnlineUpdateButton.addEventListener("click", async () => {
+  if (updateOperationInProgress || preparedUpdate) {
+    return;
+  }
+  updateOperationInProgress = true;
+  renderUpdateControls();
+  status.textContent = "Checking for Client Updates…";
+  try {
+    const result = await window.asr.checkOnlineUpdate();
+    availableOnlineUpdate = result.available ? result : null;
+    status.textContent = result.available
+      ? `Client ${result.version} is available. Download it to continue.`
+      : "No Client Update is available.";
+  } catch (error) {
+    availableOnlineUpdate = null;
+    status.textContent = `Unable to check for updates: ${error.message}`;
+  } finally {
+    updateOperationInProgress = false;
+    renderUpdateControls();
+  }
+});
+
+downloadOnlineUpdateButton.addEventListener("click", async () => {
+  if (!availableOnlineUpdate || updateOperationInProgress || preparedUpdate) {
+    return;
+  }
+  updateOperationInProgress = true;
+  renderUpdateControls();
+  status.textContent = `Downloading Client ${availableOnlineUpdate.version}…`;
+  try {
+    selectedUpdatePackage = await window.asr.downloadOnlineUpdate();
+    availableOnlineUpdate = null;
+    status.textContent = "Client Update downloaded. Prepare it when ready.";
+  } catch (error) {
+    status.textContent = `Unable to download Client Update: ${error.message}`;
+  } finally {
+    updateOperationInProgress = false;
+    renderUpdateControls();
+  }
+});
+
 prepareUpdateButton.addEventListener("click", async () => {
   if (!selectedUpdatePackage || updateOperationInProgress || preparedUpdate) {
     return;
@@ -1234,3 +1289,4 @@ window.asr.onProgress((message) => {
 
 loadResultsDirectory();
 refreshUpdateStatus();
+showClientVersion();

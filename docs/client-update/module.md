@@ -1,25 +1,32 @@
 # Client Update Lifecycle
 
 Этот документ — source of truth для Client Update без повторной доставки тяжёлого
-ASR Runtime. Реализован первый local/offline lifecycle: Client выбирает локальный
-`.asrupdate`, Coordinator проверяет подпись и payload, готовит side-by-side
-candidate, а после явно подтверждённого restart выполняет activation, READY,
-commit либо rollback. Online acquisition, release hosting, Runtime update и
-combined upgrade по-прежнему вне этого блока.
+ASR Runtime. Реализован общий lifecycle local/offline update и Online Acquisition
+v1: Client по явному действию пользователя либо выбирает локальный `.asrupdate`,
+либо проверяет и скачивает подписанный online release в свой temporary location.
+Coordinator в обоих случаях получает только локальный artifact, проверяет подпись
+и payload, готовит side-by-side candidate, а после явно подтверждённого restart
+выполняет activation, READY, commit либо rollback. Runtime update и combined
+upgrade по-прежнему вне этого блока.
 Фактические Full Setup, Runtime repair и uninstall описаны в
 [документе упаковки](../packaging/module.md).
 Наблюдаемое текущее поведение и статус его validation собраны в
 [behavioral validation matrix](validation.md); она не определяет архитектуру
 следующего milestone.
 
-## Current checkpoint — First Working local/offline Client Update
+## Current checkpoint — local/offline lifecycle + Online Acquisition v1
+
+Coordinator starts the selected GUI Client, including an update candidate, with
+the normal Windows show state. It must not pass `windowsHide`: that flag leaves
+Electron subprocesses alive while suppressing the user-facing window.
 
 This checkpoint is complete. It covers a locally supplied signed `.asrupdate`,
-Coordinator-owned side-by-side staging, durable v2 prepare/activate/commit/
-rollback state, correlated inherited-IPC READY from the packaged Client, and
-ordinary launch from the resulting durable selection. It does not make Full
-Setup an update-transaction owner or introduce an acquisition service. The
-explicitly deferred directions, without an implied priority, are listed in
+an explicit main-process-only online acquisition path, Coordinator-owned
+side-by-side staging, durable v2 prepare/activate/commit/rollback state,
+correlated inherited-IPC READY from the packaged Client, and ordinary launch
+from the resulting durable selection. It does not make Full Setup an
+update-transaction owner. The explicitly deferred directions, without an
+implied priority, are listed in
 [Намеренно вне scope](#намеренно-вне-scope).
 
 В текущем Full Setup чистая Client installation размещается в
@@ -96,6 +103,76 @@ power-loss durability directory metadata. Transactional activation/recovery is
 implemented through schema v2; this statement does not claim stronger
 hard-power-loss atomicity.
 
+## Release Tooling v1
+
+Routine production release composition lives in `npm run release:client --
+<version>`. It first validates external signing-path configuration, then writes
+the version into package metadata, runs the existing Client ZIP build and the
+existing signed package/metadata scripts. It places the three upload-ready files
+in `dist/release-<version>/`: the verified `.asrupdate`, `latest.json` and
+`latest.sig`. Publishing them to the version tag and latest GitHub Release is a
+manual step. The private key and optional passphrase contents are
+never repository or release-output inputs. `npm run release:full -- <version>`
+is intentionally separate and invokes the existing Full Setup build only when
+Runtime or installation infrastructure must be rebuilt. See
+[`release-guide.md`](../release-guide.md) for the release procedure.
+
+## Online Acquisition v1
+
+The production path was manually exercised once from `0.1.2` through public
+GitHub discovery/download, prepare, restart, READY and commit to `0.1.3`; the
+resulting schema-v2 slots selected `0.1.3` as both active and known-good. This
+is validation evidence, not a new lifecycle rule; the complete evidence and
+remaining coverage are recorded in [the validation matrix](validation.md).
+
+Online check is an explicit user action in the working packaged Client; it does
+not run at ordinary application startup and has no background scheduler. The
+renderer can invoke only `check-online` and `download-online` IPC actions with
+no URL argument. `src/main.js` owns the short-lived outbound HTTPS requests and
+keeps metadata selected by a check only in main-process memory.
+
+Production Clients embed the stable public metadata asset
+`https://github.com/imimmortallying/asr-desktop-releases/releases/latest/download/latest.json`.
+`ASR_ONLINE_RELEASE_METADATA_URL` is only a development/test override; it never
+supplies a token or other distribution secret. The discovery URL and signed
+artifact URL are HTTPS GitHub Releases asset paths. Redirects are bounded and
+allowed only to the GitHub release-host set; a signed artifact URL must be
+version-specific, not `latest`.
+
+The compact JSON metadata has exact schema-v1 fields: `schemaVersion`, purpose
+`asr-client-online-release-v1`, `keyId`, product `local-asr-prototype`, target
+`win-x64`, Client version, immutable artifact URL and artifact SHA-256/byte
+count. Its adjacent stable `latest.sig` asset contains only the Ed25519
+signature. Client fetches both during the same explicit check, before any
+version decision. It reuses `PRODUCTION_TRUSTED_SIGNERS`, but signs canonical
+metadata with the distinct `ASR online release metadata v1\0` purpose prefix.
+The package signature is therefore not valid metadata and vice versa. Remote
+version must be numerically newer than the installed Client; same and older
+versions never download or prepare a downgrade.
+
+Release process first creates and production-verifies the official `.asrupdate`,
+then runs `scripts/createOnlineReleaseMetadata.js` with that artifact, its
+immutable version-specific GitHub Releases asset URL, matching `keyId`, and an
+external production private-key file. The script derives package bytes/hash,
+uses the existing production trust anchor, refuses non-GitHub/non-immutable
+artifact URLs and produces sibling `latest.json` and `latest.sig` without
+overwriting either. Neither private key nor passphrase is copied into the
+repository, generated output or Client.
+
+The package script stages its archive in the OS temporary directory. If that
+directory is on another volume, its final no-overwrite move falls back to an
+exclusive copy after the same production verification.
+
+The main process creates that unique application-owned temporary directory once
+with `mkdtemp`; download writes `client.asrupdate.partial` inside it, verifies
+signed size and SHA-256, flushes it, then
+renames it to `.asrupdate`. Network error, interruption, redirect failure,
+overflow or integrity mismatch removes the temporary directory and does not
+touch InstallationState. Completion still does not trust or execute content:
+the unchanged Coordinator `prepare` command performs the existing package
+signature, ZIP, payload and Runtime-compatibility verification before staging.
+The temporary artifact is removed after that prepare attempt.
+
 ## Термины и ownership
 
 | Термин | Значение и ответственность |
@@ -145,6 +222,9 @@ artifact — обязательный этап lifecycle, а не post-factum д
 - Client binaries, Runtime и application/user data — разные lifecycle domains.
   Binary rollback не считается полноценным, если новая версия необратимо
   изменила persistent data так, что known-good Client больше не может её читать.
+- Online Acquisition is explicit, outbound-only and short-lived: no startup or
+  background check, listening socket, renderer-controlled remote URL, remote
+  command channel or execution of downloaded content exists in this lifecycle.
 
 ### InstallationState schema v1
 
@@ -240,11 +320,11 @@ selecting their order or design:
 
 - Runtime update lifecycle and combined Client/Runtime upgrade;
 - Coordinator/launcher self-update;
-- online acquisition channels, release hosting, staged rollout and delta updates;
+- staged rollout, channels and delta updates;
 - retention policy and a complete application-data migration strategy;
 - online backend or storage;
 - Full Setup handoff and cross-version delivery through this transaction;
 - candidate code signing and Authenticode.
 
-The implemented boundaries do not preclude these directions, but this first
-local/offline lifecycle remains intentionally narrow.
+The implemented boundaries do not preclude these directions, but Client Update
+remains intentionally narrow.

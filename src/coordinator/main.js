@@ -119,7 +119,6 @@ function launchClient(client, spawnFn) {
         detached: true,
         shell: false,
         stdio: "ignore",
-        windowsHide: true,
       });
     } catch (error) {
       reject(error);
@@ -267,7 +266,6 @@ function launchCandidateForReady(client, spawnFn, {
         detached: true,
         shell: false,
         stdio: ["ignore", "ignore", "ignore", "ipc"],
-        windowsHide: true,
         ...(childEnvironment ? { env: childEnvironment } : {}),
       });
     } catch (error) {

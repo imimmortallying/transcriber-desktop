@@ -42,17 +42,22 @@ Client, тяжёлый ASR Runtime и пользовательские данн�
 Client. Полный lifecycle установки, repair и удаления описан в
 [документе упаковки](../packaging/module.md).
 
-Реализован local/offline Client Update: установленный Client выбирает подписанный
-`.asrupdate` из локальной файловой системы, а stable launcher передаёт запуск
-fixed Coordinator, который выбирает Client через `InstallationState`. Coordinator
-проверяет package, готовит side-by-side candidate и владеет v2
-prepare/activate/READY/commit/rollback. Подробные границы, ограничения и
+Реализован Client Update: установленный Client выбирает подписанный `.asrupdate`
+из локальной файловой системы либо по явному действию проверяет/скачивает
+подписанный online release в temporary location. После acquisition оба пути
+передают одинаковый локальный package stable Coordinator, который выбирает
+Client через `InstallationState`, готовит side-by-side candidate и владеет v2
+prepare/activate/READY/commit/rollback. Online check не выполняется при старте
+и не является постоянным подключением. Подробные границы, ограничения и
 validation evidence — в [Client Update Lifecycle](../client-update/module.md) и
 его [матрице](../client-update/validation.md).
 
-Автоматическая доставка обновлений по сети, update feed, Runtime update,
-Coordinator/launcher self-update и Full Setup handoff в эту transaction пока не
-реализованы.
+Runtime update, Coordinator/launcher self-update и Full Setup handoff в эту
+transaction пока не реализованы. Production Client targets the designated
+public `imimmortallying/asr-desktop-releases` GitHub Releases endpoint; its
+provisioning/publishing remains a release operation. The distribution repository
+must contain only public release assets and a minimal README, never source code
+or secrets.
 
 Основная работа ASR остаётся локальной и не должна зависеть от интернета.
 

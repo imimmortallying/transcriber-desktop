@@ -1,7 +1,8 @@
 const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require("electron");
 const { randomUUID } = require("node:crypto");
 const { spawn } = require("node:child_process");
-const { readFile, readdir, rename, rm, stat, writeFile } = require("node:fs/promises");
+const { mkdtemp, readFile, readdir, rename, rm, stat, writeFile } = require("node:fs/promises");
+const os = require("node:os");
 const path = require("node:path");
 const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
 const { getCurrentRuntime } = require("./runtime/resolveRuntime");
@@ -13,6 +14,8 @@ const {
   removeProvisioningStateArtifacts,
   readLaunchInstallationState,
 } = require("./update/installationState");
+const { ONLINE_RELEASE_METADATA_URL } = require("./update/onlineReleaseConfig");
+const { checkForOnlineUpdate, downloadOnlineUpdate } = require("./update/onlineRelease");
 
 const installationStateMode = process.argv.find((argument) => argument.startsWith("--asr-installation-state="));
 const ipcSpikeClientBehavior = process.argv.find((argument) => argument.startsWith("--asr-ipc-spike-client-behavior="));
@@ -20,6 +23,8 @@ const updateValidationMode = process.argv.filter((argument) => argument === "--a
 const updateE2eMarkerArgument = process.argv.find((argument) => argument.startsWith("--asr-update-e2e-marker="));
 const updateE2eReadyDelayArgument = process.argv.find((argument) => argument.startsWith("--asr-update-e2e-ready-delay="));
 const updateE2eFailReady = process.argv.includes("--asr-update-e2e-fail-ready");
+let availableOnlineUpdate = null;
+let downloadedOnlineUpdateDirectory = null;
 
 async function runInstallationStateMode(argument) {
   const mode = argument.slice("--asr-installation-state=".length);
@@ -435,6 +440,8 @@ ipcMain.handle("dialog:select-media", async () => {
   return canceled ? null : filePaths[0];
 });
 
+ipcMain.handle("app:get-version", () => app.getVersion());
+
 ipcMain.handle("results:get-directory", () => getResultsDataDirectory());
 
 ipcMain.handle("results:select-directory", async () => {
@@ -637,17 +644,59 @@ ipcMain.handle("update:status", async () => {
   return result.selected.updateTransaction || null;
 });
 
+ipcMain.handle("update:check-online", async () => {
+  if (!ONLINE_RELEASE_METADATA_URL) {
+    throw new Error("Online updates are not configured for this Client release.");
+  }
+  const { version } = currentPackagedInstallation();
+  const result = await checkForOnlineUpdate({ installedVersion: version, metadataUrl: ONLINE_RELEASE_METADATA_URL });
+  availableOnlineUpdate = result.available ? result : null;
+  return result.available
+    ? { available: true, version: result.metadata.client.version }
+    : { available: false };
+});
+
+ipcMain.handle("update:download-online", async () => {
+  if (!availableOnlineUpdate) {
+    throw new Error("No newer online Client Update is available to download.");
+  }
+  if (downloadedOnlineUpdateDirectory) {
+    await rm(downloadedOnlineUpdateDirectory, { recursive: true, force: true });
+    downloadedOnlineUpdateDirectory = null;
+  }
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), "asr-online-update-"));
+  try {
+    const packagePath = await downloadOnlineUpdate(
+      availableOnlineUpdate.metadata,
+      availableOnlineUpdate.metadataSignature,
+      temporaryDirectory,
+    );
+    downloadedOnlineUpdateDirectory = temporaryDirectory;
+    return packagePath;
+  } catch (error) {
+    await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => {});
+    throw error;
+  }
+});
+
 ipcMain.handle("update:prepare", async (_event, packagePath) => {
   if (typeof packagePath !== "string" || !packagePath) {
     throw new Error("Не выбран пакет обновления.");
   }
-  const exitCode = await runCoordinatorUpdate("prepare", packagePath);
-  if (exitCode !== 0) {
-    throw new Error(`Пакет обновления не подготовлен (Coordinator exit ${exitCode}).`);
+  try {
+    const exitCode = await runCoordinatorUpdate("prepare", packagePath);
+    if (exitCode !== 0) {
+      throw new Error(`Пакет обновления не подготовлен (Coordinator exit ${exitCode}).`);
+    }
+    const { installationRoot } = currentPackagedInstallation();
+    const result = await readLaunchInstallationState(installationRoot);
+    return result.kind === "selected" ? result.selected.updateTransaction : null;
+  } finally {
+    if (downloadedOnlineUpdateDirectory && packagePath.startsWith(`${downloadedOnlineUpdateDirectory}${path.sep}`)) {
+      await rm(downloadedOnlineUpdateDirectory, { recursive: true, force: true }).catch(() => {});
+      downloadedOnlineUpdateDirectory = null;
+    }
   }
-  const { installationRoot } = currentPackagedInstallation();
-  const result = await readLaunchInstallationState(installationRoot);
-  return result.kind === "selected" ? result.selected.updateTransaction : null;
 });
 
 ipcMain.handle("update:cancel", async () => {

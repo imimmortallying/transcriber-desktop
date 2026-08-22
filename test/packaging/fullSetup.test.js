@@ -30,6 +30,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.equal(packageJson.build.nsis.allowToChangeInstallationDirectory, false);
   assert.equal(packageJson.build.nsis.allowElevation, false);
   assert.equal(packageJson.build.nsis.include, "build/installer.nsh");
+  assert.equal(packageJson.build.publish, null);
   assert.equal("extraResources" in packageJson.build, false);
   assert.equal(packageJson.scripts["prepare:runtime"], "node scripts/buildRuntimeArchive.js");
   assert.equal(packageJson.scripts["build:launcher"], "node scripts/buildStableLauncher.js");
@@ -53,7 +54,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(stableLauncherBuilder, /VKMiizYdmNdJOWpRGz4trl4lD\+\+BvYP2irAXpMilheUP0pc93iKlWAoP843Vlraj8YG19CVn0j\+dCo\/hURz9\+Q==/);
   assert.doesNotMatch(stableLauncherBuilder, /AppData|LOCALAPPDATA|ELECTRON_BUILDER_NSIS_DIR|app-builder-lib/);
   assert.match(stableLauncherSource, /StrCpy \$installationRoot "\$EXEDIR"/);
-  assert.match(coordinatorBuilder, /transformToWindowsGuiExecutable\(stagedCoordinatorOutput\)/);
+  assert.match(coordinatorBuilder, /transformToWindowsGuiExecutable\(stagedOutput\)/);
 
   assert.match(installerScript, /!include "\$\{BUILD_RESOURCES_DIR\}\\runtime-size\.nsh"/);
   assert.match(installerScript, /!define ASR_INSTALLATION_STATE_DEPLOYED_SCHEMA_MAX 2/);

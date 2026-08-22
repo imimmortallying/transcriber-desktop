@@ -155,13 +155,14 @@ package establishes release authenticity before extraction, but does not prevent
 same-user post-install tampering, replace Authenticode, or establish long-term
 Client health.
 
-### Signed local Client Update package
+### Online Acquisition and signed Client Update package
 
 - **Asset:** authenticity and integrity of externally supplied `.asrupdate`
   Client payload before side-by-side staging.
-- **Threat:** a malformed ZIP, duplicate entry, untrusted signer, altered
-  payload, unsafe extraction path, stale READY, or unrelated local process could
-  make Coordinator accept arbitrary code as a Client update.
+- **Threat:** a malicious/incorrect hosted metadata or artifact, redirect,
+  unavailable/interrupted network, malformed ZIP, duplicate entry, untrusted
+  signer, altered payload, unsafe extraction path, stale READY, or unrelated
+  local process could make Coordinator accept arbitrary code as a Client update.
 - **Control:** format v1 admits exactly `manifest.json`, `manifest.sig` and
   `client.zip`; strict duplicate-key manifest parsing, canonical Ed25519
   signature verification by `keyId`, SHA-256 and size verification happen before
@@ -171,17 +172,43 @@ Client health.
   limits fail closed. Candidate identity remains a bounded Client version, never
   an arbitrary executable path. READY uses a random attempt ID and one-time
   token over inherited private Node IPC, never argv or a public endpoint.
+  Online metadata has a separate exact schema, product/Windows-x64 identity,
+  bounded SHA-256/bytes and a sibling `latest.sig` canonical Ed25519 signature
+  made with a distinct purpose prefix under the same pinned production key set.
+  HTTPS is transport protection only; metadata signature and then package
+  verification establish release authenticity. The main process fetches only a deployment-configured
+  public GitHub Releases metadata asset, accepts bounded HTTPS redirects only
+  among GitHub release hosts, and accepts a signed immutable GitHub Releases
+  artifact URL. It writes a partial file in an application-owned temporary
+  directory, validates bytes/hash, flushes and renames only on success; all
+  failed/incomplete work is deleted before Coordinator is called.
+- **Security invariant:** Online Acquisition is available only after an explicit
+  user action and is outbound-only and short-lived. There are no startup or
+  background requests, listening socket, arbitrary renderer-controlled URL
+  fetching, remote command channel, or execution of downloaded content.
+  Renderer IPC exposes parameterless check/download actions; only the existing
+  local-artifact Coordinator prepare flow can consume a completed download.
 - **Limits:** generated Coordinator and Client remain unsigned; local per-user
   writable installation has no post-install tamper resistance. READY means
   Runtime validation plus BrowserWindow load, not transcription or long-term
-  health. Online acquisition and publisher hosting are not implemented.
+  health. Production Client embeds only the public stable
+  `imimmortallying/asr-desktop-releases` latest-metadata URL;
+  `ASR_ONLINE_RELEASE_METADATA_URL` is a development/test override, and no
+  credential fallback exists. Electron Builder publishing is explicitly `null`,
+  so it cannot infer the source repository as an auto-updater channel or embed
+  `app-update.yml`; Online Acquisition is the only packaged network update path.
 - **Verification:** `npm run test:update-package`, `npm run test:update-state`
   and `npm run test:coordinator` cover distinct test trust, signature/payload
   rejection, durable transitions, strict READY correlation and rollback logic.
   `npm run test:client-update-e2e` additionally exercises a real SEA
   Coordinator and packaged Electron candidate through signed test-package
   staging, READY commit, failed-READY rollback and subsequent ordinary launch.
-  It never receives production signing material.
+  It never receives production signing material. `npm run test:online-update`
+  uses a controlled local HTTP server through a test-only transport seam to
+  cover signed/tampered/wrong-identity metadata, version decision, unavailable,
+  oversized and interrupted responses, temporary-file cleanup, existing package
+  verifier rejection, and static no-listener/no-renderer-URL IPC evidence. It
+  is not manual GitHub Release validation.
 
 ### Python, ffmpeg и другие subprocess
 
@@ -306,11 +333,26 @@ Client health.
 
 ## Будущие сетевые компоненты
 
-Online update delivery, добровольная отправка диагностики/обратной связи и
-возможное лицензирование создадут новые сетевые trust boundaries. Их нужно
-проектировать вместе с security model; эти сетевые компоненты сейчас не
-реализованы. Реализованный local/offline Client Update не создаёт сетевой
-trust boundary.
+Добровольная отправка диагностики/обратной связи и возможное лицензирование
+создадут отдельные будущие сетевые trust boundaries. Их нужно проектировать
+вместе с security model; они не реализованы. Online update delivery реализована
+только в узкой explicit/outbound-only форме, описанной выше.
+
+### Release Tooling v1
+
+- **Asset:** production private signing key and optional passphrase.
+- **Trust boundary:** release operator environment to repository release tooling.
+- **Control:** only external file paths are supplied through
+  `ASR_RELEASE_PRIVATE_KEY_FILE` and optional
+  `ASR_RELEASE_PRIVATE_KEY_PASSPHRASE_FILE`. Before expensive Client work, the
+  release command loads the key only to verify that it matches the pinned public
+  production signer. The existing package and metadata scripts use the same
+  validation. No private-key or passphrase material is written to repository
+  files, command output or `dist/release-<version>`.
+- **Verification:** `npm run test:release` verifies early configuration failure,
+  version propagation and the allowlisted release directory contents. It does
+  not receive production signing material; release-owner validation remains
+  manual.
 
 ### Updater
 
@@ -327,14 +369,13 @@ trust boundary.
   активируется; previous known-good сохраняется до commit, а отсутствие READY
   приводит к rollback. Полная принципиальная модель зафиксирована в
   [Client Update Lifecycle](../client-update/module.md).
-- **Implementation / Verification:** the First Working local/offline Client
-  Update implements the signed-package trust model, persistent v2 transaction,
-  inherited private READY IPC and deterministic rollback/recovery. Its real
-  SEA/Electron artifact evidence is recorded in the
-  [validation matrix](../client-update/validation.md). Online acquisition,
-  hosted release delivery, Full Setup handoff, self-update and update UX remain
-  explicitly deferred; this subsection makes no priority or design choice for
-  them.
+- **Implementation / Verification:** Client Update implements signed metadata
+  acquisition in `src/update/onlineRelease.js`, main-owned IPC handoff in
+  `src/main.js`, the existing signed-package trust model, persistent v2
+  transaction, inherited private READY IPC and deterministic rollback/recovery.
+  Its automated evidence and the manual `0.1.2 → GitHub → 0.1.3` production
+  path are recorded in the [validation matrix](../client-update/validation.md).
+  Full Setup handoff and self-update remain separate decisions.
 
 ### Диагностика, обратная связь и лицензирование
 

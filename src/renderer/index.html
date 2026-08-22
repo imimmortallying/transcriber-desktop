@@ -8,6 +8,7 @@
   </head>
   <body>
     <main>
+      <p id="client-version">Client</p>
       <h1>Локальная расшифровка</h1>
       <p class="hint">Выберите аудио- или видеофайл. Распознавание выполняется на этом компьютере.</p>
 
@@ -33,6 +34,8 @@
         <div class="action-group">
           <p class="action-group-title">Client Update</p>
           <div class="action-group-actions">
+            <button id="check-online-update" class="secondary-button" type="button">Check for updates</button>
+            <button id="download-online-update" type="button" disabled>Download update</button>
             <button id="select-update-package" class="secondary-button" type="button">Choose .asrupdate</button>
             <output id="update-package-name">No update package selected</output>
             <button id="prepare-update" type="button" disabled>Prepare update</button>
