@@ -445,6 +445,9 @@ async function inspectInstallationStateForSetup(installationRoot, argumentsList,
   if (!hasSchemaV2) {
     return { kind: "compatible", stateResult };
   }
+  if (stateResult.kind !== "selected") {
+    return { ...stateResult, kind: "uninspectable" };
+  }
   if (maxSchemaVersion < SCHEMA_VERSION_V2) {
     return { kind: "setup-schema-capability-insufficient", stateResult };
   }
@@ -520,6 +523,17 @@ function stateForVersion(version, generation) {
     generation,
     activeClient: client,
     knownGoodClient: { ...client },
+  };
+}
+
+function stateV2ForVersion(version, generation) {
+  const client = { version: validateClientKey(version) };
+  return {
+    schemaVersion: SCHEMA_VERSION_V2,
+    generation,
+    activeClient: client,
+    knownGoodClient: { ...client },
+    updateTransaction: null,
   };
 }
 
@@ -712,7 +726,7 @@ async function replaceWithFreshState(installationRoot, version, options = {}) {
 }
 
 async function reconcileInstallationState(installationRoot, installedVersion, { mode = "repair", ...options } = {}) {
-  const readResult = await readInstallationState(installationRoot, options);
+  const readResult = await readLaunchInstallationState(installationRoot, options);
   if (readResult.kind === "unsupported") {
     fail("UNSUPPORTED_SCHEMA", "Installation state was created by a newer incompatible version.");
   }
@@ -720,8 +734,30 @@ async function reconcileInstallationState(installationRoot, installedVersion, { 
     fail("UNINSPECTABLE_STATE", "Installation state cannot be safely inspected.");
   }
 
+  const hasSchemaV2 = readResult.slots.some(
+    (slot) => slot.kind === "valid" && slot.state.schemaVersion === SCHEMA_VERSION_V2,
+  );
+  if (hasSchemaV2 && readResult.kind !== "selected") {
+    fail("UNINSPECTABLE_STATE", "Installation state schema v2 handoff is ambiguous.");
+  }
+
   const desiredState = stateForVersion(installedVersion, 1);
   await assertSelectedClient(installationRoot, desiredState, options);
+
+  if (hasSchemaV2) {
+    if (mode !== "provision") {
+      fail("V2_STATE_REQUIRES_FULL_SETUP_MUTATION_AUTHORITY", "Installation state schema v2 requires explicit Full Setup handoff.");
+    }
+    const nextState = stateV2ForVersion(installedVersion, readResult.selected.generation + 1);
+    const targetSlot = selectTransitionSlot(readResult);
+    await writeSnapshot(readResult.stateDirectory, path.basename(targetSlot.path), nextState, options);
+    return {
+      action: readResult.selected.updateTransaction === null
+        ? "provisioned-v2-steady"
+        : "provisioned-v2-handoff",
+      state: nextState,
+    };
+  }
 
   if (readResult.kind === "no-valid-state" || readResult.kind === "ambiguous") {
     if (!readResult.stateDirectoryExists && readResult.slots.every((slot) => slot.kind === "missing")) {
@@ -735,9 +771,7 @@ async function reconcileInstallationState(installationRoot, installedVersion, { 
       fail("STATE_VERSION_MISMATCH", "Installation state does not match the installed Client.");
     }
     const nextState = stateForVersion(installedVersion, readResult.selected.generation + 1);
-    const targetSlot = readResult.slots.find((slot) => slot.kind !== "valid") || readResult.slots.find(
-      (slot) => slot.state.generation !== readResult.selected.generation,
-    ) || readResult.slots[0];
+    const targetSlot = selectTransitionSlot(readResult);
     await writeSnapshot(readResult.stateDirectory, path.basename(targetSlot.path), nextState, options);
     return { action: "provisioned-newer", state: nextState };
   }
@@ -815,5 +849,6 @@ module.exports = {
   rollbackActivatedClientUpdate,
   sameLogicalState,
   stateForVersion,
+  stateV2ForVersion,
   validateClientKey,
 };

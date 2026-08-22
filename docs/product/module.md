@@ -59,6 +59,11 @@ provisioning/publishing remains a release operation. The distribution repository
 must contain only public release assets and a minimal README, never source code
 or secrets.
 
+Client Update also does not update Windows installer registration, the
+uninstaller, bootstrap/Coordinator infrastructure or Runtime. A change to
+Installed Apps metadata or any Full Setup-owned component requires a new Full
+Setup rather than a `.asrupdate`.
+
 Основная работа ASR остаётся локальной и не должна зависеть от интернета.
 
 ### Диагностика и обратная связь

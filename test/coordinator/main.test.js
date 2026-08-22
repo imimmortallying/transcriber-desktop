@@ -337,7 +337,15 @@ test("activated update commits only after READY and rolls back to known-good on 
       updateTransaction: { phase: "prepared", candidateClient: { version: "0.2.0" } },
     }));
     const readyChild = createSpawn().child;
-    readyChild.connected = false;
+    const controls = [];
+    readyChild.connected = true;
+    readyChild.send = (message, callback) => {
+      controls.push(message);
+      callback();
+    };
+    readyChild.disconnect = () => {
+      readyChild.connected = false;
+    };
     readyChild.unref = () => {};
     assert.equal(await runCoordinator({
       executablePath,
@@ -347,6 +355,7 @@ test("activated update commits only after READY and rolls back to known-good on 
     const committed = (await readLaunchInstallationState(root)).selected;
     assert.equal(committed.updateTransaction, null);
     assert.equal(committed.activeClient.version, "0.2.0");
+    assert.deepEqual(controls, [{ type: "asr-update-committed", protocolVersion: 1 }]);
 
     await writeInstallationState(root, stateV2({
       updateTransaction: { phase: "prepared", candidateClient: { version: "0.2.0" } },
@@ -361,6 +370,41 @@ test("activated update commits only after READY and rolls back to known-good on 
     await waitForSpawn(fallback);
     fallback.child.emit("spawn");
     assert.equal(await result, CoordinatorExitCode.UPDATE_VALIDATION_FAILED);
+    const rolledBack = (await readLaunchInstallationState(root)).selected;
+    assert.equal(rolledBack.updateTransaction, null);
+    assert.equal(rolledBack.activeClient.version, "0.1.0");
+  });
+});
+
+test("Coordinator closes a READY candidate before rolling back a failed commit", async () => {
+  await withCoordinatorGeometry(async ({ root, executablePath }) => {
+    await Promise.all([createClient(root, "0.1.0"), createClient(root, "0.2.0")]);
+    await writeInstallationState(root, stateV2({
+      updateTransaction: { phase: "prepared", candidateClient: { version: "0.2.0" } },
+    }));
+    const controls = [];
+    const candidate = createSpawn().child;
+    candidate.connected = true;
+    candidate.send = (message, callback) => {
+      controls.push(message);
+      callback();
+    };
+    candidate.disconnect = () => {
+      candidate.connected = false;
+    };
+    candidate.unref = () => {};
+    const fallback = createSpawn();
+    const result = runCoordinator({
+      executablePath,
+      argumentsList: ["--asr-client-update=activate"],
+      readyLaunch: async () => candidate,
+      commitUpdate: async () => { throw new Error("commit denied"); },
+      spawnFn: fallback.spawnFn,
+    });
+    await waitForSpawn(fallback);
+    fallback.child.emit("spawn");
+    assert.equal(await result, CoordinatorExitCode.UPDATE_VALIDATION_FAILED);
+    assert.deepEqual(controls, [{ type: "asr-update-aborted", protocolVersion: 1 }]);
     const rolledBack = (await readLaunchInstallationState(root)).selected;
     assert.equal(rolledBack.updateTransaction, null);
     assert.equal(rolledBack.activeClient.version, "0.1.0");

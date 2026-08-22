@@ -120,17 +120,21 @@ security audit и не утверждает наличие уязвимости 
   launch reader additionally accepts only protocol-valid schema-v2 steady,
   prepared or activated state. Before replacement Full Setup's installed-Client
   inspect receives a bounded build-time deployed-schema capability (`2`);
-  absent capability is legacy v1. The comparison is readonly: known v2 either
-  reports insufficient deployed capability or requires future v2 mutation
-  authority, while Full Setup bootstrap/provision/reconcile remain v1-only.
-  Coordinator alone writes protocol-valid v2 prepare/activate/commit/rollback
-  transitions. It derives Client paths only as `<root>/Clients/<key>`, validates canonical containment, rejects reparse
+  absent capability is legacy v1. A `25` exit from an older installed Client is
+  only a provisional schema-v2 handoff result: NSIS does not modify state, and
+  the newly installed Client canonically re-reads it before writing. That Client
+  may replace a valid steady, prepared or activated v2 record with a new steady
+  v2 record selecting itself; it never commits the old candidate. Ambiguous,
+  invalid, uninspectable and newer state fail closed without a write. Coordinator
+  alone writes protocol-valid v2 prepare/activate/commit/rollback transitions.
+  It derives Client paths only as `<root>/Clients/<key>`, validates canonical containment, rejects reparse
   points and requires the expected Client executable. Reader never scans
   `Clients`; unsupported schema, oversized/uninspectable slot and duplicate JSON
   keys in either slot win over otherwise valid v1 and remain read-only. Initial
   bootstrap is prepared in an internal staged directory before the complete
   two-slot state is published. Full Setup is a temporary provisioning authority
-  only for explicitly recognized schema-v1 corruption; root launcher derives its
+  for explicitly recognized schema-v1 corruption and the narrowly defined
+  post-install schema-v2 handoff; root launcher derives its
   root only from `$EXEDIR`, validates the fixed Coordinator target for expected
   type and reparse points, and passes no arguments. Coordinator derives root only
   from its own validated
@@ -348,7 +352,10 @@ Client health.
   release command loads the key only to verify that it matches the pinned public
   production signer. The existing package and metadata scripts use the same
   validation. No private-key or passphrase material is written to repository
-  files, command output or `dist/release-<version>`.
+  files, command output or `dist/release-<version>`. The ignore policy also
+  excludes the optional local `release-signing/` directory and common private
+  key/passphrase extensions; release material still belongs outside the
+  working tree whenever possible.
 - **Verification:** `npm run test:release` verifies early configuration failure,
   version propagation and the allowlisted release directory contents. It does
   not receive production signing material; release-owner validation remains

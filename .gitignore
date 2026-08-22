@@ -3,6 +3,13 @@ dist/
 .env
 .env.local
 
+# Release signing material must remain outside source control and release output.
+release-signing/
+*.pem
+*.key
+*.p8
+*.passphrase
+
 # +claude
 pipeline/.venv/
 pipeline/**/__pycache__/

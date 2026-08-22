@@ -287,6 +287,29 @@ function launchCandidateForReady(client, spawnFn, {
   });
 }
 
+function sendCandidateControlMessage(child, message) {
+  if (!child?.connected || typeof child.send !== "function") {
+    return;
+  }
+  try {
+    child.send(message, () => {});
+  } catch {
+    // The state is already durable when this is used after commit. A lost
+    // notification must not turn a completed update back into a rollback.
+  }
+}
+
+function disconnectCandidate(child) {
+  if (!child?.connected || typeof child.disconnect !== "function") {
+    return;
+  }
+  try {
+    child.disconnect();
+  } catch {
+    // The child may exit between the connected check and disconnect().
+  }
+}
+
 async function launchKnownGoodAfterFailure(installationRoot, state, dependencies) {
   const client = await dependencies.assertClient(installationRoot, {
     ...state,
@@ -354,18 +377,19 @@ async function runCoordinator({
     }
   }
   if (updateCommand?.kind === "activate") {
-    let activatedState;
+    let candidateChild;
     try {
-      activatedState = await activateUpdate(installationRoot, { fsApi });
+      const activatedState = await activateUpdate(installationRoot, { fsApi });
       const candidate = await assertClient(installationRoot, activatedState, { fsApi });
-      const child = await readyLaunch(candidate, spawnFn);
+      candidateChild = await readyLaunch(candidate, spawnFn);
       await commitUpdate(installationRoot, { fsApi });
-      if (child.connected) {
-        child.disconnect();
-      }
-      child.unref();
+      sendCandidateControlMessage(candidateChild, { type: "asr-update-committed", protocolVersion: READY_PROTOCOL_VERSION });
+      disconnectCandidate(candidateChild);
+      candidateChild.unref();
       return CoordinatorExitCode.SUCCESS;
     } catch {
+      sendCandidateControlMessage(candidateChild, { type: "asr-update-aborted", protocolVersion: READY_PROTOCOL_VERSION });
+      disconnectCandidate(candidateChild);
       try {
         const rolledBack = await rollbackUpdate(installationRoot, { fsApi });
         await launchKnownGoodAfterFailure(installationRoot, rolledBack, dependencies);

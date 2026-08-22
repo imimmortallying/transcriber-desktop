@@ -97,6 +97,48 @@ Windows registration `InstallLocation` и штатный electron-builder uninst
 launcher и known Coordinator files только после существующей structural validation зарегистрированного
 `Clients/<client version>` layout; затем штатный uninstall удаляет shortcuts и Client.
 
+### Windows installer identity and stale development entries
+
+The current Full Setup has the stable electron-builder `appId`
+`ru.sber.local-asr`, is per-user only, and uses electron-builder's normal NSIS
+uninstall registration at `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}`
+(currently `c80ccfc2-468e-5d36-8b1f-07b50a85b600`). Its registered `InstallLocation` is the current
+`<ASR root>/Clients/<version>` directory; a Full Setup version replacement
+uses that single upgrade identity. The custom NSIS code does not write a
+second registry key. electron-builder initially calculates `EstimatedSize`
+from `InstallLocation`, which is only `Clients/<version>`. After a successful
+Full Setup has deployed Runtime, Coordinator, root launcher and state, NSIS
+recalculates the whole ASR root and overwrites `EstimatedSize` in that same
+uninstall key. It enumerates files with FileFunc `Locate` but reads each size
+through Win32 `GetFileSizeEx`, so an individual file above 2 GiB is included;
+the callback returns FileFunc's required control-stack value and converts the
+64-bit byte total to KiB before it is registered.
+`EstimatedSize` remains a DWORD count of KiB and is capped at 4 TiB. The
+directory-page install-section size is also augmented with
+the unpacked Runtime size. Thus Installed Apps reports a current Full Setup
+root estimate, not only the Electron Client payload.
+
+A Client Update changes only `Clients/<version>` selection in
+`InstallationState`. It does not update Windows Installed Apps metadata, the
+uninstaller, the root launcher, Coordinator, Runtime, or any other Full
+Setup-owned state. Therefore a changed installer display/version, uninstaller
+contract, Runtime or bootstrap requires a new Full Setup, not an
+`.asrupdate`.
+
+Several Installed Apps entries, an entry whose uninstall executable is gone,
+or a registered directory in an older monolithic layout are historical
+development artifacts rather than behavior produced by the current stable
+identity. Diagnose them before cleanup: inspect the per-user uninstall key
+derived from `UNINSTALL_APP_KEY` and its `DisplayName`, `DisplayVersion`,
+`InstallLocation` and `UninstallString`; confirm that `InstallLocation` and
+the uninstaller file actually exist; and check whether the path matches the
+current `Clients/<version>` layout. Use the registered uninstaller first.
+If it is missing, stop ASR, preserve userData/results and any needed logs,
+export the exact stale registry key, and remove only that verified stale key
+and its verified obsolete installation directory. Do not recursively remove a
+shared ASR root merely because one historical entry is broken; a current
+Full Setup can then be installed as a clean repair.
+
 После успешной установки Client, Runtime, Coordinator, launcher и shortcuts Setup запускает
 internal non-UI mode установленного Client. Он временно provision/reconcile-ит
 root-owned `InstallationState`; normal Electron window не открывается. Before
@@ -105,10 +147,12 @@ build-time capability deployed infrastructure (`max schema 2`). Отсутств
 capability argument трактуется установленным новым Client как legacy schema-v1
 Setup. Unknown/newer schema, oversized/uninspectable state или duplicate JSON
 keys, недостаточная capability (`24`) и known v2 state without Full Setup v2
-mutation authority (`25`) останавливают Setup до replacement и сохраняют Client,
-Runtime, Coordinator, launcher, shortcuts, registry и state bytes. Current
-bootstrap/provision/reconcile remain v1-only, so even a v2-capable deployed
-Coordinator does not authorize Full Setup v2 mutation or transaction recovery.
+mutation authority (`25`) from an older installed Client is a provisional
+handoff result: NSIS continues without changing state, installs the new Client,
+then that new Client re-inspects and resolves the valid v2 state. Steady v2 is
+rebound to the new Client; `prepared` and `activated` are completed as steady
+v2 selecting the new Client, never by committing the old candidate. Invalid,
+ambiguous, uninspectable and newer state still stop Setup without a state write.
 NSIS не парсит JSON, а launcher по-прежнему валидирует только fixed Coordinator target.
 
 `Runtime.staging` и `Runtime.previous` ниже относятся только к реализованной

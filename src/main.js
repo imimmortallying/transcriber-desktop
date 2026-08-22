@@ -140,6 +140,26 @@ async function runUpdateValidationMode() {
   if (readyDelay) {
     await new Promise((resolve) => setTimeout(resolve, readyDelay));
   }
+  let activationResolved = false;
+  process.once("message", (message) => {
+    if (!message || typeof message !== "object" || Array.isArray(message)
+      || message.protocolVersion !== 1) {
+      return;
+    }
+    if (message.type === "asr-update-committed") {
+      activationResolved = true;
+      window.webContents.send("update:committed");
+      return;
+    }
+    if (message.type === "asr-update-aborted") {
+      app.quit();
+    }
+  });
+  process.once("disconnect", () => {
+    if (!activationResolved) {
+      app.quit();
+    }
+  });
   process.send({
     type: "asr-update-ready",
     protocolVersion: 1,
@@ -641,7 +661,9 @@ ipcMain.handle("update:status", async () => {
   if (result.kind !== "selected") {
     throw new Error("Installation state is unavailable for Client Update.");
   }
-  return result.selected.updateTransaction || null;
+  return result.selected.updateTransaction?.phase === "prepared"
+    ? result.selected.updateTransaction
+    : null;
 });
 
 ipcMain.handle("update:check-online", async () => {

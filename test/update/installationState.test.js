@@ -27,6 +27,7 @@ const {
   rollbackActivatedClientUpdate,
   sameLogicalState,
   stateForVersion,
+  stateV2ForVersion,
   validateClientKey,
 } = require("../../src/update/installationState");
 
@@ -323,8 +324,20 @@ test("Setup capability inspection stops readonly on every valid v2 state", async
     await writeSlot(root, SLOT_NAMES[1], stateV2());
     assert.equal(
       (await inspectInstallationStateForSetup(root, [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`])).kind,
-      "v2-state-requires-full-setup-mutation-authority",
+      "uninspectable",
     );
+  });
+});
+
+test("Setup inspection refuses an ambiguous schema v2 handoff", async () => {
+  await withInstallation(async (root) => {
+    await writeSlot(root, SLOT_NAMES[0], stateV2({ generation: 4 }));
+    await writeSlot(root, SLOT_NAMES[1], stateV2({
+      generation: 4,
+      updateTransaction: preparedStateV2().updateTransaction,
+    }));
+    const result = await inspectInstallationStateForSetup(root, [`${INSPECT_MAX_SCHEMA_ARGUMENT}2`]);
+    assert.equal(result.kind, "uninspectable");
   });
 });
 
@@ -411,6 +424,59 @@ test("reconcile bootstraps an absent state and preserves a matching steady state
     const after = await Promise.all(SLOT_NAMES.map((slot) => fs.readFile(path.join(root, STATE_DIRECTORY, slot), "utf8")));
     assert.equal(repair.action, "preserved");
     assert.deepEqual(after, before);
+  });
+});
+
+test("explicit Full Setup provision hands valid v2 states to the newly installed Client", async () => {
+  await withInstallation(async (root) => {
+    await Promise.all([createClient(root, "0.1.0"), createClient(root, "0.3.0")]);
+    const cases = [
+      [stateV2({ generation: 7 }), "provisioned-v2-steady"],
+      [preparedStateV2(), "provisioned-v2-handoff"],
+      [activatedStateV2(), "provisioned-v2-handoff"],
+    ];
+    for (const [state, action] of cases) {
+      await writeSlot(root, SLOT_NAMES[0], state);
+      await writeSlot(root, SLOT_NAMES[1], state);
+      const result = await reconcileInstallationState(root, "0.3.0", { mode: "provision" });
+      assert.equal(result.action, action);
+      assert.deepEqual(result.state, stateV2ForVersion("0.3.0", state.generation + 1));
+      assert.deepEqual((await readLaunchInstallationState(root)).selected, result.state);
+    }
+  });
+});
+
+test("Full Setup v2 handoff waits for the new Client before changing state", async () => {
+  await withInstallation(async (root) => {
+    await createClient(root, "0.1.0");
+    const state = preparedStateV2();
+    await writeSlot(root, SLOT_NAMES[0], state);
+    await writeSlot(root, SLOT_NAMES[1], state);
+    const slotPaths = SLOT_NAMES.map((slot) => path.join(root, STATE_DIRECTORY, slot));
+    const before = await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath, "utf8")));
+    await assert.rejects(
+      () => reconcileInstallationState(root, "0.3.0", { mode: "provision" }),
+      (error) => error.code === "SELECTED_CLIENT_UNAVAILABLE",
+    );
+    assert.deepEqual(await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath, "utf8"))), before);
+  });
+});
+
+test("Full Setup rejects schema v2 handoff before writing ambiguous or invalid state", async () => {
+  await withInstallation(async (root) => {
+    await createClient(root, "0.3.0");
+    await writeSlot(root, SLOT_NAMES[0], stateV2({ generation: 4 }));
+    await writeSlot(root, SLOT_NAMES[1], stateV2({
+      generation: 4,
+      updateTransaction: preparedStateV2().updateTransaction,
+    }));
+    const slotPaths = SLOT_NAMES.map((slot) => path.join(root, STATE_DIRECTORY, slot));
+    const before = await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath, "utf8")));
+    await assert.rejects(
+      () => reconcileInstallationState(root, "0.3.0", { mode: "provision" }),
+      (error) => error.code === "UNINSPECTABLE_STATE",
+    );
+    assert.deepEqual(await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath, "utf8"))), before);
   });
 });
 
@@ -542,7 +608,7 @@ test("newer schema with additional fields remains unsupported rather than corrup
   });
 });
 
-test("declared-v2 invalid state remains unsupported and is never rewritten by v1 reconciliation", async () => {
+test("declared-v2 invalid state is never rewritten by Full Setup provision", async () => {
   await withInstallation(async (root) => {
     await createClient(root);
     await writeSlot(root, SLOT_NAMES[0], stateForVersion("0.1.0", 1));
@@ -564,7 +630,7 @@ test("declared-v2 invalid state remains unsupported and is never rewritten by v1
 
     await assert.rejects(
       () => reconcileInstallationState(root, "0.1.0", { mode: "provision" }),
-      (error) => error.code === "UNSUPPORTED_SCHEMA",
+      (error) => error.code === "UNINSPECTABLE_STATE",
     );
     assert.deepEqual(await Promise.all(slotPaths.map((slotPath) => fs.readFile(slotPath, "utf8"))), before);
   });

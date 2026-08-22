@@ -17,6 +17,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   const coordinatorSource = await readFile(path.join(projectRoot, "src", "coordinator", "main.js"), "utf8");
   const installerTemplate = await readFile(path.join(projectRoot, "node_modules", "app-builder-lib", "templates", "nsis", "installer.nsi"), "utf8");
   const installSectionTemplate = await readFile(path.join(projectRoot, "node_modules", "app-builder-lib", "templates", "nsis", "installSection.nsh"), "utf8");
+  const multiUserTemplate = await readFile(path.join(projectRoot, "node_modules", "app-builder-lib", "templates", "nsis", "multiUser.nsh"), "utf8");
   const customInit = installerScript.slice(
     installerScript.indexOf("!macro customInit"),
     installerScript.indexOf("!macro customPageAfterChangeDir"),
@@ -25,12 +26,21 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
     installerScript.indexOf("!macro customUnInstall"),
     installerScript.indexOf("Function un.onUninstSuccess"),
   );
+  const fullSetupEstimatedSizeWriter = installerScript.slice(
+    installerScript.indexOf("Function writeFullSetupEstimatedSize"),
+    installerScript.indexOf("Function checkRuntimeArchiveSpace"),
+  );
+  const fullSetupFileSizeCallback = installerScript.slice(
+    installerScript.indexOf("Function addFullSetupFileSize"),
+    installerScript.indexOf("Function checkRuntimeArchiveSpace"),
+  );
 
   assert.equal(packageJson.build.nsis.oneClick, false);
   assert.equal(packageJson.build.nsis.allowToChangeInstallationDirectory, false);
   assert.equal(packageJson.build.nsis.allowElevation, false);
   assert.equal(packageJson.build.nsis.include, "build/installer.nsh");
   assert.equal(packageJson.build.publish, null);
+  assert.equal(packageJson.build.appId, "ru.sber.local-asr");
   assert.equal("extraResources" in packageJson.build, false);
   assert.equal(packageJson.scripts["prepare:runtime"], "node scripts/buildRuntimeArchive.js");
   assert.equal(packageJson.scripts["build:launcher"], "node scripts/buildStableLauncher.js");
@@ -38,6 +48,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.equal(packageJson.scripts["test:launcher"], "node --test test/launcher/stableLauncher.test.js");
   assert.equal(packageJson.scripts["test:update-state"], "node --test test/update/installationState.test.js");
   assert.equal(packageJson.scripts["test:packaging"], "node --test test/packaging/fullSetup.test.js test/packaging/fullSetupE2eCleanup.test.js");
+  assert.equal(packageJson.scripts["verify:distribution"], "npm run check && npm run test:client-update && npm run test:ui-version && npm run test:packaging && npm run test:release");
   assert.equal(packageJson.scripts["test:full-setup-e2e"], "node test/packaging/fullSetupE2eHarness.js");
   assert.match(packageJson.scripts["dist:win"], /^npm run build:launcher && npm run build:coordinator && npm run prepare:runtime && electron-builder/);
   assert.equal(packageJson.devDependencies["7zip-bin"], "5.2.0");
@@ -58,8 +69,21 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
 
   assert.match(installerScript, /!include "\$\{BUILD_RESOURCES_DIR\}\\runtime-size\.nsh"/);
   assert.match(installerScript, /!define ASR_INSTALLATION_STATE_DEPLOYED_SCHEMA_MAX 2/);
+  assert.match(installerScript, /StrCmp \$installationStateExitCode "25" installationStatePreflightDeferredV2Handoff installationStatePreflightUnavailable/);
+  assert.match(installerScript, /installationStatePreflightDeferredV2Handoff:[\s\S]*newly installed Client re-inspects[\s\S]*and mutates state[\s\S]*Goto installationStatePreflightDone/);
   assert.match(installerScript, /SectionGetSize 0 \$0/);
   assert.match(installerScript, /IntOp \$0 \$0 \+ \$\{RUNTIME_UNPACKED_SIZE\}/);
+  assert.match(fullSetupEstimatedSizeWriter, /\$\{Locate\} "\$asrRootDirectory" "\/L=F \/G=1" addFullSetupFileSize/);
+  assert.match(fullSetupEstimatedSizeWriter, /System::Call 'kernel32::GetFileSizeEx\(p r0, \*l \.r1\)i\.r2'/);
+  assert.match(fullSetupEstimatedSizeWriter, /System::Int64Op \$fullSetupEstimatedSize \+ \$1[\s\S]*Pop \$fullSetupEstimatedSize/);
+  assert.match(fullSetupEstimatedSizeWriter, /System::Int64Op \$fullSetupEstimatedSize \/ 1024[\s\S]*Pop \$fullSetupEstimatedSize/);
+  assert.match(fullSetupEstimatedSizeWriter, /System::Int64Op \$fullSetupEstimatedSize > 4294967295[\s\S]*StrCpy \$fullSetupEstimatedSize 4294967295/);
+  assert.doesNotMatch(fullSetupEstimatedSizeWriter, /\$\{GetSize\}/);
+  assert.match(fullSetupEstimatedSizeWriter, /WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\\$\{UNINSTALL_APP_KEY\}" "EstimatedSize" "\$0"/);
+  assert.match(fullSetupFileSizeCallback, /System::Int64Op \$fullSetupEstimatedSize \+ \$1[\s\S]*ClearErrors[\s\S]*StrCpy \$0 ""[\s\S]*Push \$0[\s\S]*Return/);
+  assert.match(fullSetupFileSizeCallback, /addFullSetupFileSizeFailure:[\s\S]*SetErrors[\s\S]*StrCpy \$0 ""[\s\S]*Push \$0/);
+  assert.doesNotMatch(installerScript, /\$\{UNINSTALL_REGISTRY_KEY\}/);
+  assert.match(installerScript, /installationStateProvisioningDone:\s+Call writeFullSetupEstimatedSize/);
   assert.match(installerScript, /StrCpy \$isForceCurrentInstall "1"/);
   assert.match(installerScript, /!include FileFunc\.nsh/);
   assert.match(installerScript, /legacy all-users ASR installation was found/);
@@ -70,6 +94,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(customInit, /existingClientLayout:[\s\S]*Call preflightInstallationState[\s\S]*StrCpy \$installationStateProvisioningMode "provision"/);
   assert.match(installerTemplate, /Function \.onInit[\s\S]*!insertmacro customInit/);
   assert.match(installSectionTemplate, /!insertmacro uninstallOldVersion SHELL_CONTEXT[\s\S]*!ifmacrodef customInstall[\s\S]*!insertmacro customInstall/);
+  assert.match(multiUserTemplate, /!define \/ifndef UNINSTALL_REGISTRY_KEY "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\\$\{UNINSTALL_APP_KEY\}"/);
   assert.doesNotMatch(customInit, /StrCmp \$0 "Client"/);
   assert.match(customInit, /Обнаружена предыдущая версия ASR в \$legacyInstallLocation/);
   assert.match(customInit, /Пользовательские данные и результаты при этом сохраняются\./);
@@ -153,7 +178,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /Function coordinatorFileIsSafe[\s\S]*"DIRECTORY"[\s\S]*"REPARSE_POINT"/);
   assert.match(installerScript, /CreateShortCut "\$newDesktopLink" "\$stableLauncherPath"/);
   assert.match(installerScript, /CreateShortCut "\$newStartMenuLink" "\$stableLauncherPath"/);
-  assert.match(installerScript, /Function preflightInstallationState[\s\S]*IfFileExists "\$asrRootDirectory\\InstallationState\\NUL" 0 installationStatePreflightDone[\s\S]*StrCpy \$installationStateExistedBeforeInstall "1"[\s\S]*--asr-installation-state=inspect --asr-installation-state-max-schema=\$\{ASR_INSTALLATION_STATE_DEPLOYED_SCHEMA_MAX\}[\s\S]*StrCmp \$installationStateExitCode "21" installationStatePreflightUnsupported installationStatePreflightCheckUninspectable[\s\S]*StrCmp \$installationStateExitCode "23" installationStatePreflightUninspectable[\s\S]*StrCmp \$installationStateExitCode "24" installationStatePreflightCapabilityInsufficient[\s\S]*StrCmp \$installationStateExitCode "25" installationStatePreflightMutationAuthorityRequired[\s\S]*installationStatePreflightCapabilityInsufficient:[\s\S]*Quit[\s\S]*installationStatePreflightMutationAuthorityRequired:[\s\S]*Quit/);
+  assert.match(installerScript, /Function preflightInstallationState[\s\S]*IfFileExists "\$asrRootDirectory\\InstallationState\\NUL" 0 installationStatePreflightDone[\s\S]*StrCpy \$installationStateExistedBeforeInstall "1"[\s\S]*--asr-installation-state=inspect --asr-installation-state-max-schema=\$\{ASR_INSTALLATION_STATE_DEPLOYED_SCHEMA_MAX\}[\s\S]*StrCmp \$installationStateExitCode "21" installationStatePreflightUnsupported installationStatePreflightCheckUninspectable[\s\S]*StrCmp \$installationStateExitCode "23" installationStatePreflightUninspectable[\s\S]*StrCmp \$installationStateExitCode "24" installationStatePreflightCapabilityInsufficient[\s\S]*StrCmp \$installationStateExitCode "25" installationStatePreflightDeferredV2Handoff[\s\S]*installationStatePreflightCapabilityInsufficient:[\s\S]*Quit[\s\S]*installationStatePreflightDeferredV2Handoff:[\s\S]*newly installed Client re-inspects[\s\S]*and mutates state[\s\S]*Goto installationStatePreflightDone/);
   assert.match(installerScript, /Function cleanupFailedInstallationState[\s\S]*StrCmp \$installationStateExistedBeforeInstall "1" installationStateCleanupDone[\s\S]*RMDir \/r "\$asrRootDirectory\\InstallationState"[\s\S]*installationStateCleanupDone:\s+Return/);
   assert.match(installerScript, /stableLauncherShortcutsDone:[\s\S]*--asr-installation-state=\$installationStateProvisioningMode[\s\S]*StrCmp \$installationStateExitCode "23" installationStateUninspectableAfterInstall[\s\S]*installationStateProvisioningFailure:[\s\S]*Call cleanupFailedInstallationState[\s\S]*Call cleanupFailedClientInstall/);
   assert.match(mainSource, /--asr-installation-state=/);

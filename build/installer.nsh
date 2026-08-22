@@ -29,6 +29,7 @@
   Var installationStateExitCode
   Var installationStateProvisioningMode
   Var installationStateExistedBeforeInstall
+  Var fullSetupEstimatedSize
 !endif
 
 !ifdef BUILD_UNINSTALLER
@@ -222,7 +223,7 @@
     StrCmp $installationStateExitCode "24" installationStatePreflightCapabilityInsufficient installationStatePreflightCheckMutationAuthority
 
     installationStatePreflightCheckMutationAuthority:
-    StrCmp $installationStateExitCode "25" installationStatePreflightMutationAuthorityRequired installationStatePreflightUnavailable
+    StrCmp $installationStateExitCode "25" installationStatePreflightDeferredV2Handoff installationStatePreflightUnavailable
 
     installationStatePreflightUnsupported:
       MessageBox MB_OK|MB_ICONSTOP "ASR installation state was created by a newer incompatible version.$\r$\nInstall a matching or newer Full Setup."
@@ -240,9 +241,11 @@
       MessageBox MB_OK|MB_ICONSTOP "This Full Setup cannot safely deploy infrastructure for the existing ASR installation state.$\r$\nInstall a matching or newer Full Setup."
       Quit
 
-    installationStatePreflightMutationAuthorityRequired:
-      MessageBox MB_OK|MB_ICONSTOP "The existing ASR installation state requires a Full Setup with schema v2 recovery authority.$\r$\nInstall a matching or newer Full Setup."
-      Quit
+    installationStatePreflightDeferredV2Handoff:
+      ; An older installed Client can report exit 25 for a schema-v2 result but
+      ; cannot perform the handoff itself. The newly installed Client re-inspects
+      ; and mutates state only after its own Client files are safely present.
+      Goto installationStatePreflightDone
 
     installationStatePreflightDone:
   FunctionEnd
@@ -252,6 +255,52 @@
     SectionGetSize 0 $0
     IntOp $0 $0 + ${RUNTIME_UNPACKED_SIZE}
     SectionSetSize 0 $0
+  FunctionEnd
+
+  Function writeFullSetupEstimatedSize
+    ; electron-builder registers only $INSTDIR (Clients/<version>) before
+    ; customInstall deploys the shared ASR root. FileFunc.GetSize uses 32-bit
+    ; FileSeek per file, so it loses files larger than 2 GiB.
+    StrCpy $fullSetupEstimatedSize 0
+    ${Locate} "$asrRootDirectory" "/L=F /G=1" addFullSetupFileSize
+    IfErrors fullSetupEstimatedSizeFallback
+    System::Int64Op $fullSetupEstimatedSize / 1024
+    Pop $fullSetupEstimatedSize
+    System::Int64Op $fullSetupEstimatedSize > 4294967295
+    Pop $1
+    StrCmp $1 0 +2
+    StrCpy $fullSetupEstimatedSize 4294967295
+    IntFmt $0 "0x%08X" $fullSetupEstimatedSize
+    WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "EstimatedSize" "$0"
+    ClearErrors
+    Return
+
+    fullSetupEstimatedSizeFallback:
+      ; The section already contains the Client and the build-time Runtime size.
+      SectionGetSize 0 $0
+      IntFmt $0 "0x%08X" $0
+      WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${UNINSTALL_APP_KEY}" "EstimatedSize" "$0"
+      ClearErrors
+  FunctionEnd
+
+  Function addFullSetupFileSize
+    ; Locate places the file path in $R9. GetFileSizeEx yields a signed 64-bit
+    ; value, unlike NSIS FileSeek's 32-bit result used by FileFunc.GetSize.
+    System::Call 'kernel32::CreateFileW(w "$R9", i 0x80000000, i 7, p 0, i 3, i 0x80, p 0)p.r0'
+    System::Call 'kernel32::GetFileSizeEx(p r0, *l .r1)i.r2'
+    System::Call 'kernel32::CloseHandle(p r0)i'
+    StrCmp $2 0 addFullSetupFileSizeFailure
+    System::Int64Op $fullSetupEstimatedSize + $1
+    Pop $fullSetupEstimatedSize
+    ClearErrors
+    StrCpy $0 ""
+    Push $0
+    Return
+
+    addFullSetupFileSizeFailure:
+      SetErrors
+      StrCpy $0 ""
+      Push $0
   FunctionEnd
 
   Function checkRuntimeArchiveSpace
@@ -722,4 +771,5 @@
     Quit
 
   installationStateProvisioningDone:
+    Call writeFullSetupEstimatedSize
 !macroend

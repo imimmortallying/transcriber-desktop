@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld("asr", {
   prepareUpdate: (packagePath) => ipcRenderer.invoke("update:prepare", packagePath),
   cancelUpdate: () => ipcRenderer.invoke("update:cancel"),
   activateUpdate: () => ipcRenderer.invoke("update:activate"),
+  onUpdateCommitted: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("update:committed", listener);
+    return () => ipcRenderer.removeListener("update:committed", listener);
+  },
   onCloseRequested: (callback) => {
     const listener = () => callback();
     ipcRenderer.on("editor:request-close", listener);

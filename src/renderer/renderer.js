@@ -162,6 +162,11 @@ async function refreshUpdateStatus() {
   renderUpdateControls();
 }
 
+window.asr.onUpdateCommitted(() => {
+  refreshUpdateStatus();
+  status.textContent = "Client Update was applied.";
+});
+
 function formatTimecode(seconds) {
   if (!Number.isFinite(seconds)) {
     return "--:--";

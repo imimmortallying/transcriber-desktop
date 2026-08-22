@@ -103,6 +103,23 @@ power-loss durability directory metadata. Transactional activation/recovery is
 implemented through schema v2; this statement does not claim stronger
 hard-power-loss atomicity.
 
+## Activation completion
+
+`READY` is sufficient launch evidence in the current architecture only after
+the candidate has validated the installed Runtime, created its Electron window
+and finished loading its renderer. It is correlated to the Coordinator's
+private inherited IPC attempt and is not a general health claim.
+
+After that exact READY, the Coordinator durably commits the v2 state before it
+notifies the candidate that activation completed. Only a `prepared`
+transaction is exposed to normal update UI. An `activated` transaction is an
+internal Coordinator recovery state and must never leave a successfully
+started Client session in a restore/update-blocked UI state. If the Coordinator
+disconnects before commit, the validation candidate exits; the Coordinator
+rolls state back to known-good and relaunches that known-good Client where its
+process can be created. An interrupted ordinary launch still recognizes an
+`activated` state, rolls it back first, and then launches known-good.
+
 ## Release Tooling v1
 
 Routine production release composition lives in `npm run release:client --
@@ -277,10 +294,15 @@ candidate active while preserving the prior known-good. An ordinary Coordinator
 launch rolls back interrupted activated state before it creates a Client process;
 prepared state continues to launch known-good and can be explicitly cancelled.
 
-Full Setup remains readonly v1/v2-aware but has no v2 mutation or recovery
-authority. Any valid v2 state, including either transaction phase, fails closed
-before Full Setup replacement. Bootstrap, provision and reconcile remain v1-only;
-Full Setup handoff and cross-version Full Setup delivery are future work.
+Full Setup has limited schema-v2 handoff authority after its new Client files
+are installed and validated. Its preflight may receive exit `25` from an older
+installed Client; that is only a provisional admission, not state authority.
+The new Client re-reads the slots canonically before writing. It preserves a
+steady v2 record's schema and rebinds it to the newly installed Client; it
+finishes either `prepared` or `activated` as a steady v2 record selecting that
+new Client. It never commits an activated candidate without Coordinator READY.
+Ambiguous, invalid, uninspectable or newer state remains fail-closed and is not
+rewritten. State is not changed before the new Full Setup Client exists.
 
 ## Failure, rollback и recovery
 

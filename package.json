@@ -1,6 +1,6 @@
 {
   "name": "local-asr-prototype",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Локальный Electron-прототип для распознавания речи через GigaAM.",
   "main": "src/main.js",
@@ -23,6 +23,7 @@
     "test:client-update": "npm run test:update-state && npm run test:update-package && npm run test:online-update && npm run test:coordinator",
     "test:client-update-e2e": "npm run dist:client && npm run build:coordinator-client-update-e2e && node --test test/coordinator/clientUpdateLifecycleE2e.test.js",
     "test:release": "node --test test/release/releaseClient.test.js",
+    "verify:distribution": "npm run check && npm run test:client-update && npm run test:ui-version && npm run test:packaging && npm run test:release",
     "create:update-package": "node scripts/createClientUpdatePackage.js",
     "test:packaging": "node --test test/packaging/fullSetup.test.js test/packaging/fullSetupE2eCleanup.test.js",
     "test:full-setup-e2e": "node test/packaging/fullSetupE2eHarness.js",
