@@ -38,6 +38,10 @@ resources/
   python/Lib/site-packages/...
 ```
 
+The runtime archive builder stages junctions for these payload directories and
+removes the links themselves before clearing its generated staging directory; it
+never recursively follows a junction into a source payload directory.
+
 `npm run dist:win` создаёт Full Offline NSIS Setup `*.exe` в `dist/`. Он содержит
 Client, Runtime и Coordinator, но устанавливает их физически раздельно:
 

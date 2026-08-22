@@ -1,4 +1,4 @@
-const { cp, mkdir, readdir, rm, stat, symlink, writeFile } = require("node:fs/promises");
+const { cp, lstat, mkdir, readdir, rm, stat, symlink, writeFile } = require("node:fs/promises");
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 const { path7za: archiver } = require("7zip-bin");
@@ -48,8 +48,33 @@ function toKilobytes(sizeInBytes) {
   return Math.ceil(sizeInBytes / 1024);
 }
 
-async function main() {
+async function removeRuntimeStaging() {
+  const removeJunctions = async (directory) => {
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries) {
+      const entryPath = path.join(directory, entry.name);
+      const info = await lstat(entryPath);
+      if (info.isSymbolicLink()) {
+        await rm(entryPath, { recursive: false, force: true });
+      } else if (info.isDirectory()) {
+        await removeJunctions(entryPath);
+      }
+    }
+  };
+  const entries = await readdir(stagingDirectory, { withFileTypes: true }).catch((error) => {
+    if (error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  });
+  if (entries.length > 0) {
+    await removeJunctions(stagingDirectory);
+  }
   await rm(stagingDirectory, { recursive: true, force: true });
+}
+
+async function main() {
+  await removeRuntimeStaging();
   await rm(runtimeArchive, { force: true });
   await rm(runtimeExtractor, { force: true });
   await mkdir(path.join(stagingDirectory, "pipeline"), { recursive: true });
@@ -71,7 +96,7 @@ async function main() {
     runtimeSizeInclude,
     `!define RUNTIME_UNPACKED_SIZE ${toKilobytes(runtimeUnpackedSize)}\n!define RUNTIME_ARCHIVE_SIZE ${toKilobytes(runtimeArchiveStats.size)}\n`,
   );
-  await rm(stagingDirectory, { recursive: true, force: true });
+  await removeRuntimeStaging();
 }
 
 main().catch((error) => {

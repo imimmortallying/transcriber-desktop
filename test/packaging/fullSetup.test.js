@@ -46,6 +46,8 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(runtimeArchiveBuilder, /RUNTIME_UNPACKED_SIZE/);
   assert.match(runtimeArchiveBuilder, /RUNTIME_ARCHIVE_SIZE/);
   assert.match(runtimeArchiveBuilder, /cp\(archiver, runtimeExtractor\)/);
+  assert.match(runtimeArchiveBuilder, /info\.isSymbolicLink\(\)/);
+  assert.match(runtimeArchiveBuilder, /rm\(entryPath, \{ recursive: false, force: true \}\)/);
   assert.match(stableLauncherBuilder, /const nsisVersion = "3\.0\.4\.1"/);
   assert.match(stableLauncherBuilder, /electron-builder-binaries\/releases\/download\/nsis-\$\{nsisVersion\}/);
   assert.match(stableLauncherBuilder, /VKMiizYdmNdJOWpRGz4trl4lD\+\+BvYP2irAXpMilheUP0pc93iKlWAoP843Vlraj8YG19CVn0j\+dCo\/hURz9\+Q==/);
