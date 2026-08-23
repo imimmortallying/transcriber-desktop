@@ -45,6 +45,7 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.equal(packageJson.build.nsis.include, "build/installer.nsh");
   assert.equal(packageJson.build.publish, null);
   assert.equal(packageJson.build.appId, "ru.sber.local-asr");
+  assert.equal(packageJson.localAsr.supportEmail, "imimmortallyingwork@yandex.ru");
   assert.equal("extraResources" in packageJson.build, false);
   assert.equal(packageJson.scripts["prepare:runtime"], "node scripts/buildRuntimeArchive.js");
   assert.equal(packageJson.scripts["build:launcher"], "node scripts/buildStableLauncher.js");
@@ -52,7 +53,8 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.equal(packageJson.scripts["test:launcher"], "node --test test/launcher/stableLauncher.test.js");
   assert.equal(packageJson.scripts["test:update-state"], "node --test test/update/installationState.test.js");
   assert.equal(packageJson.scripts["test:packaging"], "node --test test/packaging/fullSetup.test.js test/packaging/fullSetupE2eCleanup.test.js");
-  assert.equal(packageJson.scripts["verify:distribution"], "npm run check && npm run test:client-update && npm run test:ui-version && npm run test:packaging && npm run test:release");
+  assert.equal(packageJson.scripts["test:diagnostics"], "node --test test/diagnostics/supportReport.test.js");
+  assert.equal(packageJson.scripts["verify:distribution"], "npm run check && npm run test:diagnostics && npm run test:client-update && npm run test:ui-version && npm run test:packaging && npm run test:release");
   assert.equal(packageJson.scripts["test:full-setup-e2e"], "node test/packaging/fullSetupE2eHarness.js");
   assert.match(packageJson.scripts["dist:win"], /^npm run build:launcher && npm run build:coordinator && npm run prepare:runtime && electron-builder/);
   assert.equal(packageJson.devDependencies["7zip-bin"], "5.2.0");
@@ -90,6 +92,11 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(installerScript, /installationStateProvisioningDone:\s+Call writeFullSetupEstimatedSize/);
   assert.match(installerScript, /StrCpy \$isForceCurrentInstall "1"/);
   assert.match(installerScript, /!include FileFunc\.nsh/);
+  assert.match(installerScript, /!define ASR_SUPPORT_EMAIL "imimmortallyingwork@yandex\.ru"/);
+  assert.match(installerScript, /Function writeInstallReport[\s\S]*\$LOCALAPPDATA\\Local ASR\\support-reports[\s\S]*kind=install[\s\S]*installation_scope=per-user[\s\S]*support_email=\$\{ASR_SUPPORT_EMAIL\}/);
+  assert.match(installerScript, /runtimeArchivePreflightFailure:[\s\S]*Call writeInstallReport/);
+  assert.match(installerScript, /runtimeExtractionFailure:[\s\S]*Call writeInstallReport/);
+  assert.match(installerScript, /installationStateProvisioningFailure:[\s\S]*Call writeInstallReport/);
   assert.match(installerScript, /legacy all-users ASR installation was found/);
   assert.match(installerScript, /\$legacyInstallLocation\\resources\\python\\python\.exe/);
   assert.match(customInit, /IfFileExists "\$legacyInstallLocation\\resources\\python\\python\.exe" blockLegacyLayout classifyRegisteredClientLayout/);

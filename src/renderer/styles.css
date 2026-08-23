@@ -205,6 +205,24 @@ button:disabled {
   background: #fff;
 }
 
+.support-report {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 20px;
+  padding: 12px;
+  border: 1px solid #d9e0ea;
+  border-radius: 6px;
+  color: #536176;
+  background: #fff;
+}
+
+.support-report p {
+  flex: 1 1 360px;
+  margin: 0;
+}
+
 .saved-runs-heading {
   justify-content: space-between;
   margin-bottom: 12px;

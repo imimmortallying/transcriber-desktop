@@ -4,8 +4,15 @@ const { spawn } = require("node:child_process");
 const { mkdtemp, readFile, readdir, rename, rm, stat, writeFile } = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { readSavedSegments, runRecognition } = require("./recognition/runRecognition");
-const { getCurrentRuntime } = require("./runtime/resolveRuntime");
+const { probeRecognitionRuntime, readSavedSegments, runRecognition } = require("./recognition/runRecognition");
+const { getCurrentRuntime, validateRuntime } = require("./runtime/resolveRuntime");
+const {
+  buildSupportReport,
+  getSupportReportDirectory,
+  isSupportReportPath,
+  writeSupportReport,
+} = require("./diagnostics/supportReport");
+const { SUPPORT_EMAIL } = require("./diagnostics/supportConfig");
 const {
   InstallationStateError,
   derivePackagedInstallation,
@@ -203,6 +210,84 @@ function updateE2eReadyDelay() {
 
 function getResultsSettingsPath() {
   return path.join(app.getPath("userData"), "settings.json");
+}
+
+function getSupportReportDirectories() {
+  return {
+    localAppData: process.env.LOCALAPPDATA,
+    fallbackDirectory: app.getPath("userData"),
+  };
+}
+
+function classifyRecognitionError(error) {
+  const details = `${error?.message || ""}\n${error?.stack || ""}`;
+  if (/torchaudio|torch\.ops\.load_library|libtorch/i.test(details)) {
+    return "ASR-RUNTIME-NATIVE-LOAD";
+  }
+  if (/access is denied|eacces|eperm/i.test(details)) {
+    return "ASR-ACCESS-DENIED";
+  }
+  if (/ffmpeg/i.test(details)) {
+    return "ASR-FFMPEG-FAILED";
+  }
+  return "ASR-RECOGNITION-FAILED";
+}
+
+async function inspectRecognitionRuntime({ runImportProbes = false } = {}) {
+  try {
+    const runtime = await validateRuntime(getCurrentRuntime());
+    const pythonDirectory = path.dirname(runtime.pythonExecutable);
+    const [pythonInfo, ffmpegInfo, torchaudioInfo, torchCpuInfo] = await Promise.all([
+      stat(runtime.pythonExecutable),
+      stat(runtime.ffmpegExecutable),
+      inspectRegularFile(path.join(pythonDirectory, "Lib", "site-packages", "torchaudio", "lib", "libtorchaudio.pyd")),
+      inspectRegularFile(path.join(pythonDirectory, "Lib", "site-packages", "torch", "lib", "torch_cpu.dll")),
+    ]);
+    return {
+      runtime: {
+        manifestVersion: runtime.manifest.manifestFormatVersion,
+        runtimeId: runtime.manifest.runtimeId,
+        runtimeVersion: runtime.manifest.runtimeVersion,
+        runtimeApiVersion: runtime.manifest.runtimeApiVersion,
+        pythonPresent: pythonInfo.isFile(),
+        ffmpegPresent: ffmpegInfo.isFile(),
+        torchaudioNativeLibraryPresent: torchaudioInfo,
+        torchCpuLibraryPresent: torchCpuInfo,
+      },
+      runtimeChecks: runImportProbes ? await probeRecognitionRuntime(runtime) : [],
+    };
+  } catch (error) {
+    return {
+      runtime: null,
+      runtimeChecks: [{ name: "runtime_inspection", ok: false, detail: error.message }],
+    };
+  }
+}
+
+async function inspectRegularFile(filePath) {
+  try {
+    return (await stat(filePath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function createRecognitionSupportReport(error, inputPath, options) {
+  const inspection = await inspectRecognitionRuntime(options);
+  const report = buildSupportReport({
+    kind: "recognition",
+    errorCode: classifyRecognitionError(error),
+    error,
+    appVersion: app.getVersion(),
+    supportEmail: SUPPORT_EMAIL,
+    operation: {
+      name: "recognition",
+      inputExtension: typeof inputPath === "string" ? path.extname(inputPath).toLowerCase() || "none" : "not-collected",
+    },
+    ...inspection,
+  });
+  const written = await writeSupportReport(report, getSupportReportDirectories());
+  return { ...written, errorCode: classifyRecognitionError(error) };
 }
 
 function createWindow() {
@@ -602,22 +687,53 @@ ipcMain.handle("run:delete", async (_event, segmentsPath) => {
 });
 
 ipcMain.handle("recognition:run", async (event, inputPath) => {
-  if (typeof inputPath !== "string") {
-    throw new Error("Не выбран файл для распознавания.");
+  let recognitionStarted = false;
+  try {
+    if (typeof inputPath !== "string") {
+      throw new Error("Не выбран файл для распознавания.");
+    }
+    const fileInfo = await stat(inputPath);
+    if (!fileInfo.isFile()) {
+      throw new Error("Выбранный путь не является файлом.");
+    }
+    const dataDirectory = await getResultsDataDirectory();
+    recognitionStarted = true;
+    const result = await runRecognition(inputPath, {
+      dataDirectory,
+      onProgress(status) {
+        event.sender.send("recognition:progress", status);
+      },
+    });
+    return { ok: true, result };
+  } catch (error) {
+    let supportReport = null;
+    try {
+      supportReport = await createRecognitionSupportReport(error, inputPath, { runImportProbes: recognitionStarted });
+    } catch (reportError) {
+      console.error(`Unable to create ASR support report: ${reportError.message}`);
+    }
+    return {
+      ok: false,
+      error: {
+        code: supportReport?.errorCode || classifyRecognitionError(error),
+        message: "Не удалось завершить распознавание.",
+        reportPath: supportReport?.filePath || null,
+        supportEmail: SUPPORT_EMAIL,
+      },
+    };
   }
+});
 
-  const fileInfo = await stat(inputPath);
-  if (!fileInfo.isFile()) {
-    throw new Error("Выбранный путь не является файлом.");
+ipcMain.handle("support:reveal-report", async (_event, reportPath) => {
+  const reportDirectory = getSupportReportDirectory(getSupportReportDirectories());
+  if (!isSupportReportPath(reportPath, reportDirectory)) {
+    throw new Error("Файл технического отчёта недоступен.");
   }
-
-  const dataDirectory = await getResultsDataDirectory();
-  return runRecognition(inputPath, {
-    dataDirectory,
-    onProgress(status) {
-      event.sender.send("recognition:progress", status);
-    },
-  });
+  const reportInfo = await stat(reportPath);
+  if (!reportInfo.isFile()) {
+    throw new Error("Файл технического отчёта не найден.");
+  }
+  shell.showItemInFolder(reportPath);
 });
 
 ipcMain.handle("clipboard:write-text", (_event, text) => {

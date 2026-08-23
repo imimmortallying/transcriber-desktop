@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("asr", {
   listRuns: () => ipcRenderer.invoke("runs:list"),
   openRun: (segmentsPath) => ipcRenderer.invoke("runs:open", segmentsPath),
   transcribe: (inputPath) => ipcRenderer.invoke("recognition:run", inputPath),
+  revealSupportReport: (reportPath) => ipcRenderer.invoke("support:reveal-report", reportPath),
   copyText: (text) => ipcRenderer.invoke("clipboard:write-text", text),
   saveTranscript: (transcript) => ipcRenderer.invoke("dialog:save-transcript", transcript),
   saveProject: (segmentsPath, project) => ipcRenderer.invoke("project:save", segmentsPath, project),

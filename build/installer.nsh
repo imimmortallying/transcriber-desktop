@@ -1,4 +1,6 @@
 !include FileFunc.nsh
+!define ASR_SUPPORT_EMAIL "imimmortallyingwork@yandex.ru"
+!define ASR_INSTALL_REPORT_HINT "$\r$\nТехнический отчёт сохранён в %LOCALAPPDATA%\\Local ASR\\support-reports. Отправьте этот файл на ${ASR_SUPPORT_EMAIL}."
 
 !ifndef BUILD_UNINSTALLER
   !include "${BUILD_RESOURCES_DIR}\runtime-size.nsh"
@@ -30,6 +32,10 @@
   Var installationStateProvisioningMode
   Var installationStateExistedBeforeInstall
   Var fullSetupEstimatedSize
+  Var installReportDirectory
+  Var installReportPath
+  Var installReportStage
+  Var installReportError
 !endif
 
 !ifdef BUILD_UNINSTALLER
@@ -172,7 +178,10 @@
   StrCpy $installationStateExistedBeforeInstall "0"
 
   ${if} $hasPerMachineInstallation == "1"
-    MessageBox MB_OK|MB_ICONSTOP "A legacy all-users ASR installation was found. Remove the old all-users installation first, then run this per-user setup again."
+    StrCpy $installReportStage "legacy all-users installation"
+    StrCpy $installReportError "A legacy all-users ASR installation blocks this per-user Setup."
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "A legacy all-users ASR installation was found. Remove the old all-users installation first, then run this per-user setup again.${ASR_INSTALL_REPORT_HINT}"
     Quit
   ${endif}
 
@@ -193,11 +202,17 @@
     IfFileExists "$legacyInstallLocation\Uninstall ${PRODUCT_FILENAME}.exe" existingClientLayout blockUnknownRegisteredLayout
 
   blockLegacyLayout:
-    MessageBox MB_OK|MB_ICONSTOP "Обнаружена предыдущая версия ASR в $legacyInstallLocation.$\r$\nСначала удалите её через Установленные приложения Windows, затем снова запустите Setup.$\r$\nПользовательские данные и результаты при этом сохраняются."
+    StrCpy $installReportStage "legacy per-user installation"
+    StrCpy $installReportError "A legacy ASR installation blocks this Setup."
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "Обнаружена предыдущая версия ASR в $legacyInstallLocation.$\r$\nСначала удалите её через Установленные приложения Windows, затем снова запустите Setup.$\r$\nПользовательские данные и результаты при этом сохраняются.${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   blockUnknownRegisteredLayout:
-    MessageBox MB_OK|MB_ICONSTOP "Обнаружена нераспознанная или неполная предыдущая установка ASR в $legacyInstallLocation.$\r$\nАвтоматическая замена не выполняется. Сначала удалите эту установку через Установленные приложения Windows, затем снова запустите Setup."
+    StrCpy $installReportStage "unknown registered installation"
+    StrCpy $installReportError "The registered ASR installation layout could not be classified safely."
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "Обнаружена нераспознанная или неполная предыдущая установка ASR в $legacyInstallLocation.$\r$\nАвтоматическая замена не выполняется. Сначала удалите эту установку через Установленные приложения Windows, затем снова запустите Setup.${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   existingClientLayout:
@@ -244,19 +259,31 @@
     StrCmp $installationStateExitCode "25" installationStatePreflightDeferredV2Handoff installationStatePreflightUnavailable
 
     installationStatePreflightUnsupported:
-      MessageBox MB_OK|MB_ICONSTOP "ASR installation state was created by a newer incompatible version.$\r$\nInstall a matching or newer Full Setup."
+      StrCpy $installReportStage "installation-state preflight"
+      StrCpy $installReportError "The existing installation state was created by a newer incompatible version."
+      Call writeInstallReport
+      MessageBox MB_OK|MB_ICONSTOP "ASR installation state was created by a newer incompatible version.$\r$\nInstall a matching or newer Full Setup.${ASR_INSTALL_REPORT_HINT}"
       Quit
 
     installationStatePreflightUnavailable:
-      MessageBox MB_OK|MB_ICONSTOP "ASR installation state could not be inspected safely.$\r$\nInstall a matching or newer Full Setup."
+      StrCpy $installReportStage "installation-state preflight"
+      StrCpy $installReportError "The existing installation state could not be inspected safely."
+      Call writeInstallReport
+      MessageBox MB_OK|MB_ICONSTOP "ASR installation state could not be inspected safely.$\r$\nInstall a matching or newer Full Setup.${ASR_INSTALL_REPORT_HINT}"
       Quit
 
     installationStatePreflightUninspectable:
-      MessageBox MB_OK|MB_ICONSTOP "ASR installation state is ambiguous or cannot be inspected safely.$\r$\nInstall a matching or newer Full Setup."
+      StrCpy $installReportStage "installation-state preflight"
+      StrCpy $installReportError "The existing installation state is ambiguous or uninspectable."
+      Call writeInstallReport
+      MessageBox MB_OK|MB_ICONSTOP "ASR installation state is ambiguous or cannot be inspected safely.$\r$\nInstall a matching or newer Full Setup.${ASR_INSTALL_REPORT_HINT}"
       Quit
 
     installationStatePreflightCapabilityInsufficient:
-      MessageBox MB_OK|MB_ICONSTOP "This Full Setup cannot safely deploy infrastructure for the existing ASR installation state.$\r$\nInstall a matching or newer Full Setup."
+      StrCpy $installReportStage "installation-state preflight"
+      StrCpy $installReportError "The deployed Full Setup infrastructure cannot consume the existing installation state schema."
+      Call writeInstallReport
+      MessageBox MB_OK|MB_ICONSTOP "This Full Setup cannot safely deploy infrastructure for the existing ASR installation state.$\r$\nInstall a matching or newer Full Setup.${ASR_INSTALL_REPORT_HINT}"
       Quit
 
     installationStatePreflightDeferredV2Handoff:
@@ -266,6 +293,29 @@
       Goto installationStatePreflightDone
 
     installationStatePreflightDone:
+  FunctionEnd
+
+  Function writeInstallReport
+    StrCpy $installReportDirectory "$LOCALAPPDATA\Local ASR\support-reports"
+    CreateDirectory "$installReportDirectory"
+    IfErrors installReportDone
+    StrCpy $installReportPath "$installReportDirectory\ASR-install-report-${VERSION}.txt"
+    ClearErrors
+    FileOpen $0 "$installReportPath" w
+    IfErrors installReportDone
+    FileWrite $0 "ASR Support Report$\r$\n"
+    FileWrite $0 "format_version=1$\r$\n"
+    FileWrite $0 "kind=install$\r$\n"
+    FileWrite $0 "app_version=${VERSION}$\r$\n"
+    FileWrite $0 "installation_scope=per-user$\r$\n"
+    FileWrite $0 "support_email=${ASR_SUPPORT_EMAIL}$\r$\n"
+    FileWrite $0 "stage=$installReportStage$\r$\n"
+    FileWrite $0 "error=$installReportError$\r$\n"
+    FileWrite $0 "privacy=No audio, transcript, project contents, user paths, file names, IP addresses or hardware identifiers are collected.$\r$\n"
+    FileClose $0
+
+    installReportDone:
+    ClearErrors
   FunctionEnd
 
   Function addRuntimeSpaceRequired
@@ -650,37 +700,58 @@
 
   runtimeArchivePreflightFailure:
     Call cleanupFailedClientInstall
-    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime installation failed.$\r$\nStage: $runtimeFailureStage$\r$\nError: $runtimeFailureError$\r$\n$runtimeCleanupStatus"
+    StrCpy $installReportStage "$runtimeFailureStage"
+    StrCpy $installReportError "$runtimeFailureError"
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime installation failed.$\r$\nStage: $runtimeFailureStage$\r$\nError: $runtimeFailureError$\r$\n$runtimeCleanupStatus${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   runtimeStagingPreflightFailure:
     Call cleanupFailedClientInstall
-    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime installation failed.$\r$\nStage: $runtimeFailureStage$\r$\nError: $runtimeFailureError$\r$\n$runtimeCleanupStatus"
+    StrCpy $installReportStage "$runtimeFailureStage"
+    StrCpy $installReportError "$runtimeFailureError"
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime installation failed.$\r$\nStage: $runtimeFailureStage$\r$\nError: $runtimeFailureError$\r$\n$runtimeCleanupStatus${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   runtimePostExtractionValidationFailure:
     Call cleanupFailedClientInstall
-    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime post-extraction validation failed.$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\n7za.exe exit code: $runtimeExtractionExitCode$\r$\n7za.exe output: $runtimeExtractionOutput$\r$\nThe staging directory was kept for diagnostics.$\r$\n$runtimeCleanupStatus"
+    StrCpy $installReportStage "runtime post-extraction validation"
+    StrCpy $installReportError "The Runtime staging directory has no runtime manifest after extraction."
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime post-extraction validation failed.$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\n7za.exe exit code: $runtimeExtractionExitCode$\r$\n7za.exe output: $runtimeExtractionOutput$\r$\nThe staging directory was kept for diagnostics.$\r$\n$runtimeCleanupStatus${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   runtimeArchiveMissing:
     Call cleanupFailedClientInstall
-    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: archive materialization$\r$\nArchive path: $runtimeArchivePath$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: runtime.7z is missing before extraction.$\r$\n$runtimeCleanupStatus"
+    StrCpy $installReportStage "runtime archive materialization"
+    StrCpy $installReportError "The bundled Runtime archive is missing before extraction."
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: archive materialization$\r$\nArchive path: $runtimeArchivePath$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: runtime.7z is missing before extraction.$\r$\n$runtimeCleanupStatus${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   runtimeExtractorMissing:
     Call cleanupFailedClientInstall
-    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: extractor materialization$\r$\nArchive path: $runtimeArchivePath$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: bundled 7za.exe is missing before extraction.$\r$\n$runtimeCleanupStatus"
+    StrCpy $installReportStage "runtime extractor materialization"
+    StrCpy $installReportError "The bundled Runtime extractor is missing before extraction."
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: extractor materialization$\r$\nArchive path: $runtimeArchivePath$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: bundled 7za.exe is missing before extraction.$\r$\n$runtimeCleanupStatus${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   runtimeStagingMissing:
     Call cleanupFailedClientInstall
-    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: staging directory creation$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: Runtime.staging was not created before extraction.$\r$\n$runtimeCleanupStatus"
+    StrCpy $installReportStage "runtime staging directory creation"
+    StrCpy $installReportError "The Runtime staging directory was not created before extraction."
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "Unable to unpack the bundled ASR Runtime.$\r$\nStage: staging directory creation$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\nError: Runtime.staging was not created before extraction.$\r$\n$runtimeCleanupStatus${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   runtimeExtractionFailure:
     Call cleanupFailedClientInstall
-    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime extraction failed.$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\n7za.exe exit code: $runtimeExtractionExitCode$\r$\n7za.exe output: $runtimeExtractionOutput$\r$\nThe staging directory was kept for diagnostics.$\r$\n$runtimeCleanupStatus"
+    StrCpy $installReportStage "runtime extraction"
+    StrCpy $installReportError "The bundled Runtime archive could not be extracted."
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "ASR Runtime extraction failed.$\r$\nArchive path: $runtimeArchivePath$\r$\nArchive size (build metadata): $runtimeArchiveSize KiB$\r$\nDestination: $runtimeStagingDirectory$\r$\n7za.exe exit code: $runtimeExtractionExitCode$\r$\n7za.exe output: $runtimeExtractionOutput$\r$\nThe staging directory was kept for diagnostics.$\r$\n$runtimeCleanupStatus${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   runtimeExtracted:
@@ -737,7 +808,10 @@
 
   coordinatorDeploymentFailure:
     Call cleanupFailedClientInstall
-    MessageBox MB_OK|MB_ICONSTOP "ASR Coordinator deployment failed.$\r$\nCoordinator directory: $asrRootDirectory\Coordinator$\r$\nA previous Coordinator was left unchanged or restored when possible.$\r$\n$runtimeCleanupStatus"
+    StrCpy $installReportStage "Coordinator deployment"
+    StrCpy $installReportError "The stable Coordinator could not be deployed."
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "ASR Coordinator deployment failed.$\r$\nCoordinator directory: $asrRootDirectory\Coordinator$\r$\nA previous Coordinator was left unchanged or restored when possible.$\r$\n$runtimeCleanupStatus${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   stableLauncherInstalled:
@@ -785,7 +859,10 @@
   installationStateProvisioningFailure:
     Call cleanupFailedInstallationState
     Call cleanupFailedClientInstall
-    MessageBox MB_OK|MB_ICONSTOP "ASR installation state provisioning failed.$\r$\nClient: $INSTDIR$\r$\n$runtimeCleanupStatus"
+    StrCpy $installReportStage "installation-state provisioning"
+    StrCpy $installReportError "$runtimeCleanupStatus"
+    Call writeInstallReport
+    MessageBox MB_OK|MB_ICONSTOP "ASR installation state provisioning failed.$\r$\nClient: $INSTDIR$\r$\n$runtimeCleanupStatus${ASR_INSTALL_REPORT_HINT}"
     Quit
 
   installationStateProvisioningDone:

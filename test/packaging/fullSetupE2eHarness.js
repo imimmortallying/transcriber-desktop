@@ -61,6 +61,19 @@ async function waitForFile(filePath) {
   throw new Error(`Timed out waiting for ${filePath}.`);
 }
 
+async function waitForRemoval(filePath) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    try {
+      await stat(filePath);
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Timed out waiting for removal of ${filePath}.`);
+}
+
 async function assertFile(filePath) {
   assert.equal((await stat(filePath)).isFile(), true, `${filePath} must be a regular file.`);
 }
@@ -178,7 +191,11 @@ async function main() {
 
     progress("Normal uninstall: starting");
     await writeFile(foreignCoordinatorFile, "foreign residue\n", "utf8");
-    await expectExit("Normal uninstall", uninstallerPath, ["/S", "/currentuser", `_?=${clientDirectory}`], { cwd: clientDirectory, env: environment });
+    await expectExit("Normal uninstall", uninstallerPath, ["/S", "/currentuser"], { cwd: workspace, env: environment });
+    await Promise.all([
+      waitForRemoval(clientExecutable),
+      waitForRemoval(path.join(root, "Clients")),
+    ]);
     await Promise.all([
       assertFile(foreignCoordinatorFile),
       assert.rejects(stat(coordinatorPath), { code: "ENOENT" }),
@@ -186,6 +203,7 @@ async function main() {
       assert.rejects(stat(slotA), { code: "ENOENT" }),
       assert.rejects(stat(path.join(root, "Runtime", "runtime-manifest.json")), { code: "ENOENT" }),
       assert.rejects(stat(clientExecutable), { code: "ENOENT" }),
+      assert.rejects(stat(path.join(root, "Clients")), { code: "ENOENT" }),
     ]);
     progress("Normal uninstall: passed");
   } finally {

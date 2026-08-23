@@ -19,8 +19,12 @@ test("renderer obtains the running Client version from Electron main process", a
   assert.match(main, /return result\.selected\.updateTransaction\?\.phase === "prepared"[\s\S]*: null;/);
   assert.match(preload, /getClientVersion: \(\) => ipcRenderer\.invoke\("app:get-version"\)/);
   assert.match(preload, /onUpdateCommitted: \(callback\) =>/);
+  assert.match(preload, /revealSupportReport: \(reportPath\) => ipcRenderer\.invoke\("support:reveal-report", reportPath\)/);
   assert.match(index, /id="client-version"/);
   assert.match(renderer, /Client v\$\{await window\.asr\.getClientVersion\(\)\}/);
   assert.match(renderer, /window\.asr\.onUpdateCommitted\(\(\) => \{[\s\S]*refreshUpdateStatus\(\)/);
+  assert.match(renderer, /const response = await window\.asr\.transcribe\(selectedFile\);[\s\S]*showSupportReport\(response\.error\)/);
+  assert.match(renderer, /window\.asr\.revealSupportReport\(pendingSupportReportPath\)/);
+  assert.match(index, /id="support-report"/);
   assert.doesNotMatch(index, /Client v0\.1\.2/);
 });

@@ -31,6 +31,9 @@ const cancelUpdateButton = document.querySelector("#cancel-update");
 const updatePackageName = document.querySelector("#update-package-name");
 const updateStatus = document.querySelector("#update-status");
 const status = document.querySelector("#status");
+const supportReport = document.querySelector("#support-report");
+const supportReportMessage = document.querySelector("#support-report-message");
+const revealSupportReportButton = document.querySelector("#reveal-support-report");
 const editor = document.querySelector("#editor");
 const documentMode = document.querySelector("#document-mode");
 const clientVersion = document.querySelector("#client-version");
@@ -60,6 +63,7 @@ let selectedUpdatePackage = null;
 let preparedUpdate = null;
 let updateOperationInProgress = false;
 let availableOnlineUpdate = null;
+let pendingSupportReportPath = null;
 
 async function showClientVersion() {
   try {
@@ -138,6 +142,21 @@ function setRunning(running) {
   });
   renderUpdateControls();
   updateActiveSavedRun();
+}
+
+function clearSupportReport() {
+  pendingSupportReportPath = null;
+  supportReport.hidden = true;
+  supportReportMessage.textContent = "";
+}
+
+function showSupportReport(error) {
+  pendingSupportReportPath = error.reportPath || null;
+  supportReport.hidden = false;
+  revealSupportReportButton.hidden = !pendingSupportReportPath;
+  supportReportMessage.textContent = pendingSupportReportPath
+    ? `Подготовлен технический отчёт (${error.code}). Откройте файл и отправьте его на ${error.supportEmail}. Аудио, расшифровки и имена файлов в отчёт не входят.`
+    : `Не удалось подготовить технический отчёт (${error.code}). Сообщите этот код на ${error.supportEmail}.`;
 }
 
 function renderUpdateControls() {
@@ -1030,9 +1049,16 @@ transcribeButton.addEventListener("click", async () => {
   openSpeakerPopoverParagraphId = null;
   renderSpeakerList();
   renderEditor();
+  clearSupportReport();
   status.textContent = "Запускаю распознавание…";
   try {
-    const result = await window.asr.transcribe(selectedFile);
+    const response = await window.asr.transcribe(selectedFile);
+    if (!response.ok) {
+      showSupportReport(response.error);
+      status.textContent = `Ошибка: ${response.error.message}`;
+      return;
+    }
+    const { result } = response;
     sourceSegmentsPath = result.segmentsPath;
     setRecognizedSource(result.segments, result.transcript);
     loadSegments(result.segments, result.transcript);
@@ -1070,6 +1096,17 @@ openSavedButton.addEventListener("click", async () => {
     status.textContent = `Ошибка загрузки списка: ${error.message}`;
   } finally {
     setRunning(false);
+  }
+});
+
+revealSupportReportButton.addEventListener("click", async () => {
+  if (!pendingSupportReportPath) {
+    return;
+  }
+  try {
+    await window.asr.revealSupportReport(pendingSupportReportPath);
+  } catch (error) {
+    status.textContent = `Не удалось открыть файл отчёта: ${error.message}`;
   }
 });
 

@@ -194,6 +194,10 @@ installation-owned tree. Если `Clients` unsafe или locked, он оста�
 root не удаляется; то же правило действует, если tree не удалось удалить
 полностью. Root никогда не удаляется рекурсивно. Service uninstall
 намеренно сохраняет `InstallationState` и весь `Clients` tree.
+Обычный запуск штатного NSIS uninstaller не передаёт внутренний `_?` parameter:
+NSIS сам запускает временную копию, чтобы исходный uninstaller и versioned
+Client directory можно было удалить. `_?` допустим только для service/update
+flow, который заранее запускает копию uninstaller вне Client directory.
 Electron userData, settings, transcripts, default results и внешняя results
 directory не относятся к installation lifecycle и не удаляются ни ручным, ни
 служебным uninstall.
@@ -214,6 +218,13 @@ Runtime archive materialизуется в `$PLUGINSDIR\runtime.7z`, а bundled `
 штатного нового Client uninstaller с сохранением Electron userData. Он удаляет
 только текущий versioned Client и его registration/shortcuts, не трогая sibling `Runtime`,
 `Runtime.staging` или `Runtime.previous`.
+
+Если custom Full Setup останавливается на критической fail-closed ветке, он до
+диалога ошибки сохраняет компактный Install Report в
+`%LOCALAPPDATA%\Local ASR\support-reports\`. В отчёте есть версия Setup,
+per-user scope, этап и причина, но нет полного install path или пользовательских
+материалов. Это локальный файл для ручной передачи поддержке; Setup не делает
+сетевых запросов. Полный контракт — в [документе диагностики](../diagnostics/module.md).
 
 Legacy per-user установка с тем же application identity не мигрируется
 автоматически. При точном legacy marker

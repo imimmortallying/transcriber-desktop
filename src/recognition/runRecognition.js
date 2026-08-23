@@ -43,6 +43,65 @@ function runPython(runtime, args) {
   });
 }
 
+function probePythonImport(runtime, moduleName) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeout;
+    const finish = (result) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+    let child;
+    try {
+      child = spawn(runtime.pythonExecutable, [
+        "-c",
+        `import importlib; module = importlib.import_module(${JSON.stringify(moduleName)}); print(getattr(module, '__version__', 'loaded'))`,
+      ], {
+        cwd: runtime.pipelineDirectory,
+        windowsHide: true,
+      });
+    } catch (error) {
+      finish({ name: moduleName, ok: false, detail: error.message });
+      return;
+    }
+
+    timeout = setTimeout(() => {
+      child.kill();
+      finish({ name: moduleName, ok: false, detail: "Import probe timed out after 10 seconds." });
+    }, 10_000);
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", (error) => {
+      finish({ name: moduleName, ok: false, detail: error.message });
+    });
+    child.once("close", (code) => {
+      finish({
+        name: moduleName,
+        ok: code === 0,
+        detail: code === 0 ? stdout.trim() : (stderr.trim() || `Python exited with code ${code}.`),
+      });
+    });
+  });
+}
+
+async function probeRecognitionRuntime(runtime) {
+  const checks = [];
+  for (const moduleName of ["torch", "torchaudio", "soundfile", "onnxruntime"]) {
+    checks.push(await probePythonImport(runtime, moduleName));
+  }
+  return checks;
+}
+
 function readCliValue(output, name) {
   const match = output.match(new RegExp(`^${name}=(.+)$`, "m"));
   if (!match) {
@@ -113,4 +172,4 @@ async function runRecognition(inputPath, { dataDirectory, onProgress = () => {} 
   };
 }
 
-module.exports = { readSavedSegments, runRecognition };
+module.exports = { probeRecognitionRuntime, readSavedSegments, runRecognition };

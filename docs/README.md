@@ -21,6 +21,9 @@
 - `diarization/module.md` — сознательно отключённая диаризация и её границы.
 - `security/module.md` — сквозная security-модель: активы, угрозы, границы
   доверия, controls и их verification.
+- `diagnostics/module.md` — локальные Support Report v1, их privacy-boundary и
+  ручная передача без сетевого endpoint; `diagnostics/validation.md` — evidence
+  этого поведения.
 
 Обычные `*/module.md` описывают конкретный ASR и являются его source of truth.
 `playbooks/` хранит переносимые engineering-подходы: это guidance для других
