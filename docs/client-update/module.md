@@ -134,7 +134,8 @@ recovery), the Coordinator best-effort removes direct unreferenced versioned
 Client directories. It validates the installation root, `Clients`, candidate
 directory, expected Client executable and complete removal tree as ordinary,
 canonically contained non-reparse filesystem objects before deleting anything.
-Entries without a safe Client key, incomplete directories, reparse points and any inspection or
+An empty direct Client directory with a safe key is removable garbage; non-empty
+incomplete directories, reparse points and any inspection or
 deletion failure are retained for a later startup; cleanup never changes the
 success result of a commit or Client launch.
 

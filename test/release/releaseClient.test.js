@@ -92,6 +92,36 @@ test("Client release propagates one version to its signed artifacts and keeps si
   });
 });
 
+test("public release refuses an existing durable target before version mutation or builds", async () => {
+  await withTemporaryProject(async (projectRoot) => {
+    const privateKeyFile = path.join(projectRoot, "external-private-key.pem");
+    const passphraseFile = path.join(projectRoot, "external-passphrase.txt");
+    const releaseDirectory = path.join(projectRoot, "dist", "release-1.2.3");
+    await fs.mkdir(releaseDirectory, { recursive: true });
+    await Promise.all([
+      fs.writeFile(privateKeyFile, "private-key-content"),
+      fs.writeFile(passphraseFile, "passphrase-content"),
+      fs.writeFile(path.join(releaseDirectory, "published.txt"), "durable", "utf8"),
+    ]);
+    let runCalls = 0;
+    await assert.rejects(
+      releasePublic(["1.2.3"], {
+        projectRoot,
+        environment: {
+          ASR_RELEASE_PRIVATE_KEY_FILE: privateKeyFile,
+          ASR_RELEASE_PRIVATE_KEY_PASSPHRASE_FILE: passphraseFile,
+        },
+        run: async () => { runCalls += 1; },
+        validateSigning: async () => {},
+      }),
+      /Refusing to overwrite existing release output/,
+    );
+    assert.equal(runCalls, 0);
+    assert.equal(JSON.parse(await fs.readFile(path.join(projectRoot, "package.json"), "utf8")).version, "0.0.0");
+    assert.equal(await fs.readFile(path.join(releaseDirectory, "published.txt"), "utf8"), "durable");
+  });
+});
+
 test("Client release rejects missing signing configuration before changing project metadata or starting a build", async () => {
   await withTemporaryProject(async (projectRoot) => {
     let runCalls = 0;
@@ -114,9 +144,12 @@ test("public release stages one Client version and the matching Full Setup witho
   await withTemporaryProject(async (projectRoot) => {
     const privateKeyFile = path.join(projectRoot, "external-private-key.pem");
     const passphraseFile = path.join(projectRoot, "external-passphrase.txt");
+    await fs.mkdir(path.join(projectRoot, "dist", "release-1.2.2"), { recursive: true });
     await Promise.all([
       fs.writeFile(privateKeyFile, "private-key-content"),
       fs.writeFile(passphraseFile, "passphrase-content"),
+      fs.writeFile(path.join(projectRoot, "dist", "stale-build-output.txt"), "stale", "utf8"),
+      fs.writeFile(path.join(projectRoot, "dist", "release-1.2.2", "previous-release.txt"), "durable", "utf8"),
     ]);
     const calls = [];
     const output = [];
@@ -162,6 +195,8 @@ test("public release stages one Client version and the matching Full Setup witho
       "local-asr-prototype Setup 1.2.3.exe",
       "local-asr-prototype-client-1.2.3-win-x64.asrupdate",
     ]);
+    await assert.rejects(fs.lstat(path.join(projectRoot, "dist", "stale-build-output.txt")), { code: "ENOENT" });
+    assert.equal(await fs.readFile(path.join(projectRoot, "dist", "release-1.2.2", "previous-release.txt"), "utf8"), "durable");
     const packageCall = calls.find((call) => call.argumentsList[0]?.endsWith("createClientUpdatePackage.js"));
     assert.equal(argumentValue(packageCall.argumentsList, "--version"), "1.2.3");
     assert.ok(calls.some((call) => call.argumentsList.slice(-2).join(" ") === "run dist:win"));

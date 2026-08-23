@@ -45,6 +45,15 @@ never recursively follows a junction into a source payload directory.
 `npm run dist:win` создаёт Full Offline NSIS Setup `*.exe` в `dist/`. Он содержит
 Client, Runtime и Coordinator, но устанавливает их физически раздельно:
 
+`dist/` вне durable direct-child папок с точным именем `release-X.Y.Z` является
+воспроизводимым build/test workspace. `npm run clean:dist` удаляет его обычные
+файлы и директории, не выходя за canonical project `dist/`, но сохраняет все
+такие `release-X.Y.Z` папки со всем содержимым. Публичный
+`npm run release:public -- <version>` сам сначала откажется перезаписывать
+`dist/release-<version>`, затем очистит только disposable workspace; в durable
+release directory остаются только Setup, `.asrupdate`, `latest.json` и
+`latest.sig`.
+
 ```text
 <ASR root>/
   asr-launch.exe          # stable launch stub; not a versioned Client

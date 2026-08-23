@@ -3,6 +3,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { assertProductionSigningConfiguration } = require("../src/update/productionTrust");
+const { cleanDist } = require("./cleanDist");
 const {
   assertAbsent,
   assertReleaseContents,
@@ -71,6 +72,7 @@ async function releasePublic(argumentsList = process.argv.slice(2), options = {}
   const releaseDirectory = path.join(distributionDirectory, `release-${version}`);
   await assertAbsent(releaseDirectory, fsApi);
   await fsApi.mkdir(distributionDirectory, { recursive: true });
+  await cleanDist({ projectRoot, fsApi });
 
   const npmVersion = npmInvocation(["version", version, "--no-git-tag-version", "--allow-same-version"], environment);
   await run(npmVersion.command, npmVersion.argumentsList, { cwd: projectRoot });

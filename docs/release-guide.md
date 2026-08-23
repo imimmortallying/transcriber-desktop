@@ -28,6 +28,38 @@ the immutable update asset only if it is newer. The existing local Coordinator
 verification, staging, READY/commit and rollback lifecycle then takes over;
 GitHub is discovery and transport, not an updater.
 
+## `dist` workspace and durable release output
+
+`dist/` has two ownership classes. Its direct child directories named exactly
+`release-X.Y.Z`, where every version component is a canonical non-negative
+integer, are durable public-release output. Each such directory is
+self-contained; a normal public release contains exactly four publishable files
+for that version: the Full Setup `.exe`, the signed `.asrupdate`, `latest.json`
+and `latest.sig`. The documented Client-only recovery/debug flow is the
+intentional three-file exception.
+
+Every other direct child of `dist/` is reproducible build or test workspace:
+for example `win-unpacked`, electron-builder metadata, root-level Setup and
+Client artifacts, blockmaps and temporary staging directories. It is not a
+publication location. Run the safe Node-based cleanup whenever this workspace
+should be reset:
+
+```powershell
+npm run clean:dist
+```
+
+It removes only direct children of the canonical project `dist/` directory and
+preserves every valid `release-X.Y.Z` directory with all of its contents. It
+does not follow reparse points, does not protect look-alike names such as
+`release-01.2.3`, and fails rather than operating on an unsafe workspace entry.
+There is intentionally no routine command that deletes durable release output.
+
+`release:public` first refuses an existing `dist/release-<target-version>`
+directory. Only after that collision check does it clear disposable `dist/`
+workspace entries, leaving earlier durable releases untouched; version mutation
+and the expensive builds happen afterward. A release directory is therefore
+never automatically overwritten or deleted.
+
 ## Practical test map
 
 ### Release rule
@@ -153,11 +185,13 @@ for recovery, debugging or deliberately composing a release step by step.
    npm run release:public -- 0.1.2
    ```
 
-   This validates production signing configuration before any build, persists
-   `0.1.2` once into `package.json` and `package-lock.json`, creates the signed
-   Client Update assets and builds the matching Full Setup. It stages the four
-   public files in `dist/release-0.1.2/`; it does not create a GitHub Release or
-   commit anything.
+   This validates production signing configuration, refuses an existing
+   `dist/release-0.1.2/`, and clears only disposable `dist/` workspace output
+   before any version mutation or build. It then persists `0.1.2` once into
+   `package.json` and `package-lock.json`, creates the signed Client Update
+   assets and builds the matching Full Setup. It stages the four public files
+   in `dist/release-0.1.2/`; it does not create a GitHub Release or commit
+   anything.
 4. Create a published, non-prerelease GitHub Release in
    `imimmortallying/asr-desktop-releases`, targeting the reviewed release commit,
    with tag `v0.1.2` and release name `ASR v0.1.2`. Make it the repository's

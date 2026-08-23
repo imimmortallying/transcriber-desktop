@@ -41,6 +41,20 @@ test("steady state retains active/known-good and removes an unreferenced Client"
   });
 });
 
+test("steady state removes an empty obsolete Client directory", async () => {
+  await withInstallation(async (root) => {
+    await createClient(root, "0.1.6");
+    await mkdir(path.join(root, "Clients", "0.1.2"), { recursive: true });
+    const state = stateV2({ activeVersion: "0.1.6" });
+    assert.deepEqual(await cleanupObsoleteClientDirectories(root, state), {
+      removed: ["0.1.2"],
+      skipped: [],
+    });
+    await assert.doesNotReject(fs.lstat(path.join(root, "Clients", "0.1.6")));
+    await assert.rejects(fs.lstat(path.join(root, "Clients", "0.1.2")), { code: "ENOENT" });
+  });
+});
+
 test("prepared and activated transactions retain every Client required for recovery", async () => {
   await withInstallation(async (root) => {
     await Promise.all(["0.1.0", "0.2.0", "0.3.0"].map((version) => createClient(root, version)));

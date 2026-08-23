@@ -49,19 +49,25 @@ async function inspectClientsDirectory(installationRoot, fsApi) {
 async function inspectOwnedClientDirectory(clientsPath, realClients, version, fsApi) {
   const clientPath = path.join(clientsPath, version);
   const executablePath = path.join(clientPath, CLIENT_EXECUTABLE);
-  const [clientInfo, executableInfo] = await Promise.all([
-    fsApi.lstat(clientPath),
-    fsApi.lstat(executablePath),
-  ]);
-  if (!isSafeDirectory(clientInfo) || !isSafeFile(executableInfo)) {
+  const clientInfo = await fsApi.lstat(clientPath);
+  if (!isSafeDirectory(clientInfo)) {
     throw new Error("Client directory has an unsafe filesystem type.");
   }
-  const [realClient, realExecutable] = await Promise.all([
-    fsApi.realpath(clientPath),
-    fsApi.realpath(executablePath),
-  ]);
-  if (path.dirname(realClient) !== realClients || path.dirname(realExecutable) !== realClient) {
+  const realClient = await fsApi.realpath(clientPath);
+  if (path.dirname(realClient) !== realClients) {
     throw new Error("Client directory escapes the installation-owned Clients directory.");
+  }
+  const entries = await fsApi.readdir(clientPath, { withFileTypes: true });
+  if (entries.length === 0) {
+    return { clientPath, realClient };
+  }
+  const executableInfo = await fsApi.lstat(executablePath);
+  if (!isSafeFile(executableInfo)) {
+    throw new Error("Client directory has an unsafe filesystem type.");
+  }
+  const realExecutable = await fsApi.realpath(executablePath);
+  if (path.dirname(realExecutable) !== realClient) {
+    throw new Error("Client executable escapes the installation-owned Client directory.");
   }
   return { clientPath, realClient };
 }
