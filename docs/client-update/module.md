@@ -120,19 +120,45 @@ rolls state back to known-good and relaunches that known-good Client where its
 process can be created. An interrupted ordinary launch still recognizes an
 `activated` state, rolls it back first, and then launches known-good.
 
+## Client retention and package cleanup
+
+`Clients` is an installation-owned, side-by-side Client store, not a history
+retention cache. Cleanup derives its protected set only from the selected,
+canonical `InstallationState`: it always retains `activeClient` and
+`knownGoodClient`, and retains `updateTransaction.candidateClient` while a v2
+transaction is `prepared` or `activated`. It never applies a latest-N policy.
+
+After the durable update commit, and on every ordinary Coordinator startup
+after it has a valid current state (including after activated-to-known-good
+recovery), the Coordinator best-effort removes direct unreferenced versioned
+Client directories. It validates the installation root, `Clients`, candidate
+directory, expected Client executable and complete removal tree as ordinary,
+canonically contained non-reparse filesystem objects before deleting anything.
+Entries without a safe Client key, incomplete directories, reparse points and any inspection or
+deletion failure are retained for a later startup; cleanup never changes the
+success result of a commit or Client launch.
+
+Online acquisition creates an ASR-owned `mkdtemp` directory and returns only
+its `client.asrupdate`. A failed download removes that directory immediately;
+every later prepare attempt removes any outstanding ASR-owned download
+directory regardless of whether the prepared package was online or user chosen.
+Coordinator never removes the passed package path, so a user-supplied offline
+`.asrupdate` remains user-owned.
+
 ## Release Tooling v1
 
-Routine production release composition lives in `npm run release:client --
-<version>`. It first validates external signing-path configuration, then writes
-the version into package metadata, runs the existing Client ZIP build and the
-existing signed package/metadata scripts. It places the three upload-ready files
-in `dist/release-<version>/`: the verified `.asrupdate`, `latest.json` and
-`latest.sig`. Publishing them to the version tag and latest GitHub Release is a
-manual step. The private key and optional passphrase contents are
-never repository or release-output inputs. `npm run release:full -- <version>`
-is intentionally separate and invokes the existing Full Setup build only when
-Runtime or installation infrastructure must be rebuilt. See
-[`release-guide.md`](../release-guide.md) for the release procedure.
+Routine public release composition lives in `npm run release:public --
+<version>`. It validates external signing-path configuration, persists one
+version once, creates the verified `.asrupdate`, `latest.json` and `latest.sig`,
+then builds and stages the Full Setup carrying that same Client version. The
+four public files in `dist/release-<version>/` are the Full Setup for new/offline
+installations and the three Client Update/discovery assets for existing users.
+Publishing to the version tag and latest GitHub Release remains manual; private
+key and optional passphrase contents are never repository or release-output
+inputs. This does not broaden Client Update: it still changes Client only and
+does not own Full Setup infrastructure. `release:client` and `release:full`
+remain specialized recovery/debug commands. See [`release-guide.md`](../release-guide.md)
+for the release procedure.
 
 ## Online Acquisition v1
 

@@ -65,6 +65,12 @@ Client, Runtime и Coordinator, но устанавливает их физич�
     models/gigaam/
 ```
 
+For every public Client version, `npm run release:public -- <version>` performs
+this Full Setup build after persisting that version and stages its
+`local-asr-prototype Setup <version>.exe` beside the signed Client Update assets.
+This makes the Setup the single offline/new-user download for that exact Client;
+the `.asrupdate` remains only for existing installations.
+
 Перед Full Setup `npm run dist:win` собирает root-level `asr-launch.exe` из
 `build/stable-launcher.nsi` и final GUI-subsystem SEA Coordinator из
 `scripts/buildCoordinator.js`. `npm run build:launcher` получает pinned NSIS 3.0.4.1
@@ -92,6 +98,11 @@ read-only reads `InstallationState` and starts only validated `activeClient`.
 Separate explicit update commands verify/stage signed Client-only packages and
 perform v2 READY/commit/rollback; they never update Runtime and Full Setup does
 not invoke them.
+
+Client Update keeps side-by-side Client directories only while state/recovery
+needs them. Coordinator removes obsolete, validated non-reparse Client trees
+after commit and during later valid startup housekeeping; Full Setup ownership
+of Runtime, launcher, Coordinator, registry and installer cleanup is unchanged.
 
 Windows registration `InstallLocation` и штатный electron-builder uninstaller всё
 ещё временно принадлежат текущему versioned Client. Service uninstall с `--updated`

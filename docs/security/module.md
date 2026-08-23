@@ -142,6 +142,13 @@ security audit и не утверждает наличие уязвимости 
   only `activeClient` before ordinary process creation. Its explicit update
   command path may recover activated state to known-good and validates a
   candidate READY over inherited private IPC; it still does not scan `Clients`.
+  After commit and after a valid ordinary-start state read, a separate retention
+  pass derives protected Client keys only from active, known-good and any
+  prepared/activated candidate reference. It may remove only a direct,
+  unreferenced Client directory after validating the complete tree as ordinary,
+  canonically contained non-reparse files and directories. Unsafe, incomplete,
+  foreign or deletion-failed entries are retained; cleanup cannot fail an update
+  or launch.
   State
   consistency does not establish selected executable authenticity. Coordinator
   remains unsigned and, like the per-user writable installation, does not resist
@@ -185,7 +192,10 @@ Client health.
   among GitHub release hosts, and accepts a signed immutable GitHub Releases
   artifact URL. It writes a partial file in an application-owned temporary
   directory, validates bytes/hash, flushes and renames only on success; all
-  failed/incomplete work is deleted before Coordinator is called.
+  failed/incomplete work is deleted before Coordinator is called. After a
+  prepare attempt, main removes only that recorded ASR-owned temporary
+  directory, never the Coordinator package-path argument; offline package files
+  therefore remain user-owned.
 - **Security invariant:** Online Acquisition is available only after an explicit
   user action and is outbound-only and short-lived. There are no startup or
   background requests, listening socket, arbitrary renderer-controlled URL

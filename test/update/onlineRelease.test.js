@@ -338,3 +338,10 @@ test("online IPC exposes actions without renderer-controlled URLs or a listener"
   assert.doesNotMatch(acquisition, /createServer|\.listen\(/);
   assert.doesNotMatch(acquisition, /node:child_process|\bspawn\(/);
 });
+
+test("ASR removes only its online download directory after a prepare attempt", async () => {
+  const main = await fs.readFile(path.join(__dirname, "../../src/main.js"), "utf8");
+  assert.match(main, /downloadedOnlineUpdateDirectory = temporaryDirectory/);
+  assert.match(main, /finally \{\s+if \(downloadedOnlineUpdateDirectory\) \{\s+await rm\(downloadedOnlineUpdateDirectory,/);
+  assert.doesNotMatch(main, /rm\(packagePath/);
+});

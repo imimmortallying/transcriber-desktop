@@ -98,6 +98,44 @@ function printReleaseInstructions(release, writeOutput) {
   ].join("\n"));
 }
 
+async function createClientReleaseArtifacts({
+  version,
+  productName,
+  projectRoot,
+  distributionDirectory,
+  outputDirectory,
+  environment,
+  signing,
+  run,
+}) {
+  const artifactName = clientArtifactName(productName, version);
+  const updatePackageName = clientUpdatePackageName(productName, version);
+  const updatePackagePath = path.join(outputDirectory, updatePackageName);
+  const metadataPath = path.join(outputDirectory, "latest.json");
+  const metadataSignaturePath = path.join(outputDirectory, "latest.sig");
+  const clientBuild = npmInvocation(["run", "dist:client"], environment);
+  await run(clientBuild.command, clientBuild.argumentsList, { cwd: projectRoot });
+  await run(process.execPath, [
+    path.join(projectRoot, "scripts", "createClientUpdatePackage.js"),
+    "--input", path.join(distributionDirectory, artifactName),
+    "--output", updatePackagePath,
+    "--version", version,
+    "--key-id", signing.keyId,
+    "--private-key-file", signing.privateKeyFile,
+    ...(signing.privateKeyPassphraseFile ? ["--private-key-passphrase-file", signing.privateKeyPassphraseFile] : []),
+  ], { cwd: projectRoot });
+  await run(process.execPath, [
+    path.join(projectRoot, "scripts", "createOnlineReleaseMetadata.js"),
+    "--input", updatePackagePath,
+    "--output", metadataPath,
+    "--artifact-url", clientArtifactUrl(version, updatePackageName),
+    "--key-id", signing.keyId,
+    "--private-key-file", signing.privateKeyFile,
+    ...(signing.privateKeyPassphraseFile ? ["--private-key-passphrase-file", signing.privateKeyPassphraseFile] : []),
+  ], { cwd: projectRoot });
+  return { files: [updatePackagePath, metadataPath, metadataSignaturePath], updatePackageName };
+}
+
 async function releaseClient(argumentsList = process.argv.slice(2), options = {}) {
   const version = readReleaseVersion(argumentsList);
   const projectRoot = options.projectRoot || path.resolve(__dirname, "..");
@@ -124,42 +162,26 @@ async function releaseClient(argumentsList = process.argv.slice(2), options = {}
   await run(npmVersion.command, npmVersion.argumentsList, { cwd: projectRoot });
 
   const stagingDirectory = await fsApi.mkdtemp(path.join(distributionDirectory, `.release-${version}-`));
-  const artifactName = clientArtifactName(productName, version);
-  const updatePackageName = clientUpdatePackageName(productName, version);
-  const updatePackagePath = path.join(stagingDirectory, updatePackageName);
-  const metadataPath = path.join(stagingDirectory, "latest.json");
-  const metadataSignaturePath = path.join(stagingDirectory, "latest.sig");
   try {
-    const clientBuild = npmInvocation(["run", "dist:client"], environment);
-    await run(clientBuild.command, clientBuild.argumentsList, { cwd: projectRoot });
-    await run(process.execPath, [
-      path.join(projectRoot, "scripts", "createClientUpdatePackage.js"),
-      "--input", path.join(distributionDirectory, artifactName),
-      "--output", updatePackagePath,
-      "--version", version,
-      "--key-id", signing.keyId,
-      "--private-key-file", signing.privateKeyFile,
-      ...(signing.privateKeyPassphraseFile ? ["--private-key-passphrase-file", signing.privateKeyPassphraseFile] : []),
-    ], { cwd: projectRoot });
-    await run(process.execPath, [
-      path.join(projectRoot, "scripts", "createOnlineReleaseMetadata.js"),
-      "--input", updatePackagePath,
-      "--output", metadataPath,
-      "--artifact-url", clientArtifactUrl(version, updatePackageName),
-      "--key-id", signing.keyId,
-      "--private-key-file", signing.privateKeyFile,
-      ...(signing.privateKeyPassphraseFile ? ["--private-key-passphrase-file", signing.privateKeyPassphraseFile] : []),
-    ], { cwd: projectRoot });
-    await assertReleaseContents(stagingDirectory, [updatePackageName, "latest.json", "latest.sig"], fsApi);
+    const artifacts = await createClientReleaseArtifacts({
+      version,
+      productName,
+      projectRoot,
+      distributionDirectory,
+      outputDirectory: stagingDirectory,
+      environment,
+      signing,
+      run,
+    });
+    await assertReleaseContents(stagingDirectory, [artifacts.updatePackageName, "latest.json", "latest.sig"], fsApi);
     await fsApi.rename(stagingDirectory, releaseDirectory);
+    const release = { version, directory: releaseDirectory, files: artifacts.files.map((filePath) => path.join(releaseDirectory, path.basename(filePath))) };
+    printReleaseInstructions(release, writeOutput);
+    return release;
   } catch (error) {
     await fsApi.rm(stagingDirectory, { recursive: true, force: true }).catch(() => {});
     throw error;
   }
-
-  const release = { version, directory: releaseDirectory, files: [updatePackagePath, metadataPath, metadataSignaturePath].map((filePath) => path.join(releaseDirectory, path.basename(filePath))) };
-  printReleaseInstructions(release, writeOutput);
-  return release;
 }
 
 if (require.main === module) {
@@ -171,10 +193,12 @@ if (require.main === module) {
 
 module.exports = {
   RELEASE_SIGNING_KEY_ID,
+  assertAbsent,
   assertReleaseContents,
   clientArtifactName,
   clientArtifactUrl,
   clientUpdatePackageName,
+  createClientReleaseArtifacts,
   npmInvocation,
   readReleaseVersion,
   readSigningConfiguration,

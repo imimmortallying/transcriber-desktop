@@ -714,7 +714,7 @@ ipcMain.handle("update:prepare", async (_event, packagePath) => {
     const result = await readLaunchInstallationState(installationRoot);
     return result.kind === "selected" ? result.selected.updateTransaction : null;
   } finally {
-    if (downloadedOnlineUpdateDirectory && packagePath.startsWith(`${downloadedOnlineUpdateDirectory}${path.sep}`)) {
+    if (downloadedOnlineUpdateDirectory) {
       await rm(downloadedOnlineUpdateDirectory, { recursive: true, force: true }).catch(() => {});
       downloadedOnlineUpdateDirectory = null;
     }

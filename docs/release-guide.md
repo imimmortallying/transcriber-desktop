@@ -2,10 +2,15 @@
 
 ## What is released
 
+A normal public release contains a Full Setup for new and offline installations
+and a signed Client Update for existing installations. For version `X`, the
+public asset set is `local-asr-prototype Setup X.exe`,
+`local-asr-prototype-client-X-win-x64.asrupdate`, `latest.json` and `latest.sig`.
+
 `npm run dist:client` first creates a Client-only ZIP. It contains the unpacked
 Windows Client and Electron files, but never Runtime, user data or local build
 configuration. The ZIP is an input to the signed `.asrupdate` package; it is
-not uploaded for an ordinary online release.
+not uploaded for an ordinary public release.
 
 An `.asrupdate` is a ZIP with exactly three entries: `client.zip`,
 `manifest.json` and `manifest.sig`. The manifest declares the Client version,
@@ -84,8 +89,9 @@ specific build/installation infrastructure it covers changed.
 
 `npm run dist:client` and `npm run dist:win` are build commands, not test gates:
 the former is the input for `test:client-artifact` and Client release creation;
-the latter builds the production Full Setup. Do not run either merely because a
-normal Client release is being prepared. `build:launcher`, `build:coordinator`,
+the latter builds the production Full Setup. Do not run either during ordinary
+development iteration; `release:public` runs both once for an actual public
+release. `build:launcher`, `build:coordinator`,
 `build:coordinator-ipc-spike` and `build:coordinator-client-update-e2e` are
 similarly build helpers; the heavy tests above invoke the helpers they require.
 
@@ -106,8 +112,8 @@ and verifies that the private key matches the repository-pinned public key
 before it changes project metadata or starts the Client build.
 
 The private key is PKCS#8 PEM and the public key is the pinned Ed25519 trust
-anchor in `src/update/productionTrust.js`. `release:client` consumes the two
-environment paths and invokes both signing scripts. For a manual release,
+anchor in `src/update/productionTrust.js`. `release:public` and `release:client` consume the two
+environment paths and invoke both signing scripts. For a manual release,
 `create:update-package` consumes the private-key path (and optional passphrase
 path) to sign `manifest.json`; `createOnlineReleaseMetadata.js` consumes the
 same material to sign `latest.json`. Keep both files outside the repository;
@@ -128,7 +134,7 @@ either interactive passphrase input at release time or OS-backed secret storage.
 This is deliberately a future tooling decision; the current environment-variable
 and passphrase-file workflow remains unchanged.
 
-## Routine Client release
+## Routine public release
 
 This is the preferred routine release path. Use the manual procedure below only
 for recovery, debugging or deliberately composing a release step by step.
@@ -141,33 +147,48 @@ for recovery, debugging or deliberately composing a release step by step.
    npm run verify:distribution
    ```
 
-3. Run the routine release command:
+3. Run the routine public release command:
 
    ```powershell
-   npm run release:client -- 0.1.2
+   npm run release:public -- 0.1.2
    ```
 
-   This persists `0.1.2` into `package.json` and `package-lock.json`, builds
-   the Client ZIP, creates the signed update package and creates the signed
-   online metadata. It does not create a GitHub Release or commit anything.
-4. Create a GitHub Release in `imimmortallying/asr-desktop-releases` with tag
-   `v0.1.2` and release name `ASR Client v0.1.2`.
+   This validates production signing configuration before any build, persists
+   `0.1.2` once into `package.json` and `package-lock.json`, creates the signed
+   Client Update assets and builds the matching Full Setup. It stages the four
+   public files in `dist/release-0.1.2/`; it does not create a GitHub Release or
+   commit anything.
+4. Create a published, non-prerelease GitHub Release in
+   `imimmortallying/asr-desktop-releases`, targeting the reviewed release commit,
+   with tag `v0.1.2` and release name `ASR v0.1.2`. Make it the repository's
+   current **Latest** release: Client discovery reads GitHub's
+   `releases/latest/download/latest.json` path.
 5. Upload exactly these generated assets:
 
    ```text
+   dist/release-0.1.2/local-asr-prototype Setup 0.1.2.exe
    dist/release-0.1.2/local-asr-prototype-client-0.1.2-win-x64.asrupdate
    dist/release-0.1.2/latest.json
    dist/release-0.1.2/latest.sig
    ```
+
+   New and offline users download the Full Setup `.exe`; it already contains
+   Client `0.1.2`, Runtime, Coordinator, launcher and installer-owned state.
+   Existing users update from inside ASR: `.asrupdate` is the signed Client-only
+   payload, while `latest.json` and `latest.sig` are its online-discovery
+   infrastructure. Do not upload the Client ZIP, `dist/win-unpacked`, blockmap,
+   Runtime separately, `client.zip`, `manifest.json`, `manifest.sig`, or any
+   private-key/passphrase material.
 
 The script refuses to overwrite an existing `dist/release-<version>` directory.
 Its final output repeats the tag, release name and exact upload paths.
 
 ## Manual Client release (recovery/debugging only)
 
-Use this sequence only when the preferred `release:client` path cannot be used
+Use this sequence only when the preferred `release:public` path cannot be used
 or when a release must be diagnosed step by step. It creates exactly the same
-three upload assets. Run it from the repository root in PowerShell. Substitute a
+three Client Update assets, not a routine public Full Setup. Run it from the
+repository root in PowerShell. Substitute a
 new numeric version for `0.1.2`; do not reuse an existing `dist/release-<version>`
 directory.
 
@@ -256,7 +277,8 @@ directory.
    latest.sig
    ```
 
-6. Create a published, non-prerelease GitHub Release in
+6. Only for an explicitly authorized Client-only recovery/debug release, create
+   a published, non-prerelease GitHub Release in
    `imimmortallying/asr-desktop-releases`, targeting the reviewed release commit,
    with tag `v0.1.2` and release name `ASR Client v0.1.2`, replacing the example
    version with `$version`. Make it the repository's current **Latest** release:
@@ -269,7 +291,9 @@ directory.
    latest.sig
    ```
 
-   Do **not** upload the Client ZIP, its unpacked `dist/win-unpacked` directory,
+   This three-file path does **not** satisfy the normal public-release policy:
+   for a regular release use `release:public` so the matching Full Setup is
+   published too. Do **not** upload the Client ZIP, its unpacked `dist/win-unpacked` directory,
    `client.zip`, `manifest.json` or `manifest.sig` separately, Runtime, a Full
    Setup, or any private-key/passphrase file. The Client ZIP and the latter two
    manifest files are implementation inputs or contents of the `.asrupdate`,
@@ -316,16 +340,17 @@ no external signing library. The production public-key allowlist is
   metadata payload before version selection, and verifies it again before
   download.
 
-## Rebuilding Full Setup
+## Specialized Full Setup rebuild
 
-Client-only releases do not rebuild Runtime, launcher, Coordinator, Full Setup
-or Windows Installed Apps registration. Rebuild the complete installer when
-those installation components or Runtime changed, or when the Installed Apps
-metadata (including `EstimatedSize`) must be refreshed:
+Every normal public release already builds the matching Full Setup through
+`release:public`. `release:full` remains a specialized internal command for a
+deliberate Full Setup-only rebuild, such as installer/Runtime repair work that
+is not being published as a Client release:
 
 ```powershell
 npm run release:full -- 0.1.2
 ```
 
 This persists the version and invokes the existing `dist:win` build. It does
-not sign Client update metadata and does not publish anything.
+not create signed Client update metadata, stage public assets or publish
+anything.

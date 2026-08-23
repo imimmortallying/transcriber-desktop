@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { mkdir, mkdtemp, readFile, rm, writeFile } = require("node:fs/promises");
+const { lstat, mkdir, mkdtemp, readFile, rm, writeFile } = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { EventEmitter } = require("node:events");
@@ -172,6 +172,19 @@ test("Coordinator default launch preserves steady v1/v2 state and recovers activ
   });
 });
 
+test("Coordinator startup performs best-effort cleanup from the current canonical state", async () => {
+  await withCoordinatorGeometry(async ({ root, executablePath }) => {
+    await Promise.all([createClient(root, "0.1.0"), createClient(root, "0.2.0")]);
+    await writeInstallationState(root, selectedState("0.2.0").selected);
+    const spawned = createSpawn();
+    const result = runCoordinator({ executablePath, spawnFn: spawned.spawnFn });
+    await waitForSpawn(spawned);
+    await assert.rejects(lstat(path.join(root, "Clients", "0.1.0")), { code: "ENOENT" });
+    spawned.child.emit("spawn");
+    assert.equal(await result, CoordinatorExitCode.SUCCESS);
+  });
+});
+
 test("Coordinator recovery uses known-good validation after activated-state interruption", async () => {
   await withCoordinatorGeometry(async ({ root, executablePath }) => {
     const activated = stateV2({
@@ -332,7 +345,7 @@ test("candidate READY requires the exact private IPC correlation", async () => {
 
 test("activated update commits only after READY and rolls back to known-good on failure", async () => {
   await withCoordinatorGeometry(async ({ root, executablePath }) => {
-    await Promise.all([createClient(root, "0.1.0"), createClient(root, "0.2.0")]);
+    await Promise.all([createClient(root, "0.0.1"), createClient(root, "0.1.0"), createClient(root, "0.2.0")]);
     await writeInstallationState(root, stateV2({
       updateTransaction: { phase: "prepared", candidateClient: { version: "0.2.0" } },
     }));
@@ -355,8 +368,10 @@ test("activated update commits only after READY and rolls back to known-good on 
     const committed = (await readLaunchInstallationState(root)).selected;
     assert.equal(committed.updateTransaction, null);
     assert.equal(committed.activeClient.version, "0.2.0");
+    await assert.rejects(lstat(path.join(root, "Clients", "0.0.1")), { code: "ENOENT" });
     assert.deepEqual(controls, [{ type: "asr-update-committed", protocolVersion: 1 }]);
 
+    await createClient(root, "0.1.0");
     await writeInstallationState(root, stateV2({
       updateTransaction: { phase: "prepared", candidateClient: { version: "0.2.0" } },
     }));

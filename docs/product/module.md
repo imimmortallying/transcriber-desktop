@@ -42,6 +42,14 @@ Client, тяжёлый ASR Runtime и пользовательские данн�
 Client. Полный lifecycle установки, repair и удаления описан в
 [документе упаковки](../packaging/module.md).
 
+Каждый публичный Client release выпускается как единый versioned набор: Full
+Setup с тем же Client для нового/offline пользователя, а также signed
+`.asrupdate`, `latest.json` и `latest.sig` для уже установленного ASR. Новый
+пользователь скачивает один Full Setup; существующий пользователь получает
+Client-only update внутри приложения. Это release policy, а не combined-update
+lifecycle: Full Setup по-прежнему владеет Runtime, launcher, Coordinator,
+installer/uninstaller, registry и initial provisioning.
+
 Реализован Client Update: установленный Client выбирает подписанный `.asrupdate`
 из локальной файловой системы либо по явному действию проверяет/скачивает
 подписанный online release в temporary location. После acquisition оба пути

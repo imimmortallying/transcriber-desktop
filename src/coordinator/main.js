@@ -14,6 +14,7 @@ const {
 } = require("../update/installationState");
 const { stageVerifiedClientUpdate } = require("../update/clientUpdatePackage");
 const { getRuntimePaths, validateRuntime } = require("../runtime/resolveRuntime");
+const { cleanupObsoleteClientDirectories } = require("./clientRetention");
 
 const COORDINATOR_EXECUTABLE = "asr-coordinator.exe";
 const COORDINATOR_DIRECTORY = "Coordinator";
@@ -332,6 +333,7 @@ async function runCoordinator({
   cancelUpdate = cancelPreparedClientUpdate,
   commitUpdate = commitActivatedClientUpdate,
   rollbackUpdate = rollbackActivatedClientUpdate,
+  cleanupClients = cleanupObsoleteClientDirectories,
   getRuntime = getRuntimePaths,
   validateCurrentRuntime = validateRuntime,
   readyLaunch = launchCandidateForReady,
@@ -382,7 +384,8 @@ async function runCoordinator({
       const activatedState = await activateUpdate(installationRoot, { fsApi });
       const candidate = await assertClient(installationRoot, activatedState, { fsApi });
       candidateChild = await readyLaunch(candidate, spawnFn);
-      await commitUpdate(installationRoot, { fsApi });
+      const committedState = await commitUpdate(installationRoot, { fsApi });
+      await cleanupClients(installationRoot, committedState, { fsApi }).catch(() => {});
       sendCandidateControlMessage(candidateChild, { type: "asr-update-committed", protocolVersion: READY_PROTOCOL_VERSION });
       disconnectCandidate(candidateChild);
       candidateChild.unref();
@@ -424,6 +427,8 @@ async function runCoordinator({
       return stateExitCode;
     }
   }
+
+  await cleanupClients(installationRoot, stateResult.selected, { fsApi }).catch(() => {});
 
   let client;
   try {
