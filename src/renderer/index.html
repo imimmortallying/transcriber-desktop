@@ -9,7 +9,7 @@
   <body>
     <main>
       <header class="app-header">
-        <details class="more-menu">
+        <details id="more-menu" class="more-menu">
           <summary>Ещё</summary>
           <div class="more-menu-actions">
             <button id="open-saved" class="secondary-button" type="button" aria-expanded="false" aria-controls="saved-runs">Мои расшифровки</button>
@@ -18,11 +18,7 @@
         </details>
       </header>
 
-      <section id="quick-view" aria-labelledby="quick-title">
-        <h1 id="quick-title">Локальная расшифровка</h1>
-        <p class="hint">Выберите аудио- или видеофайл. Распознавание выполняется на этом компьютере.</p>
-        <p class="context-hint">Файл и текст остаются на этом компьютере.</p>
-
+      <section id="source-view">
         <section class="controls" aria-label="Выбор файла">
           <div class="action-group">
             <div class="action-group-actions">
@@ -33,23 +29,20 @@
           </div>
         </section>
         <p id="selected-file-hint" class="context-hint" hidden>Файл выбран. Нажмите «Распознать», чтобы получить текст.</p>
-
-        <section id="quick-result" class="quick-result" aria-labelledby="quick-result-title" hidden>
-          <div class="result-heading">
-            <h2 id="quick-result-title">Текст готов</h2>
-            <div class="action-group-actions">
-              <button id="copy-text" class="secondary-button" type="button" disabled>Копировать</button>
-              <button id="save" class="secondary-button" type="button" disabled>Сохранить .txt</button>
-              <button id="open-editor" type="button" disabled>Открыть в редакторе</button>
-            </div>
+        <section id="recognition-progress" class="recognition-progress" aria-live="polite" hidden>
+          <div class="recognition-progress-heading">
+            <p id="recognition-progress-stage">Запускаю распознавание…</p>
+            <output id="recognition-elapsed">00:00</output>
           </div>
-          <p class="context-hint">Скопируйте текст, сохраните его в файл или откройте редактор для дальнейшей работы.</p>
-          <div id="quick-preview" class="quick-preview" aria-live="polite"></div>
         </section>
+
       </section>
 
-      <section id="advanced-panel" class="advanced-panel" aria-labelledby="advanced-title" hidden>
-        <h2 id="advanced-title">Настройки</h2>
+      <dialog id="advanced-panel" class="app-dialog" aria-labelledby="advanced-title">
+        <div class="dialog-heading">
+          <h2 id="advanced-title">Настройки</h2>
+          <button id="close-settings" class="secondary-button" type="button">Закрыть</button>
+        </div>
         <div class="results-directory">
           <span class="results-directory-label">Папка результатов:</span>
           <output id="results-directory" title="Загружаю путь…">Загружаю путь…</output>
@@ -70,65 +63,81 @@
           <p id="update-status" class="hint">Обновление не подготовлено.</p>
         </details>
         <p id="client-version">Client</p>
-      </section>
+      </dialog>
 
-      <section id="saved-runs" class="saved-runs" aria-labelledby="saved-runs-title" hidden>
-        <div class="saved-runs-heading">
+      <dialog id="saved-runs" class="app-dialog saved-runs" aria-labelledby="saved-runs-title">
+        <div class="dialog-heading">
           <h2 id="saved-runs-title">Сохранённые прогоны</h2>
-          <button id="close-saved-runs" class="icon-button" type="button" aria-label="Закрыть список прогонов" title="Закрыть">
-            <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>
-          </button>
+          <button id="close-saved-runs" class="secondary-button" type="button">Назад</button>
         </div>
+        <p id="saved-runs-guidance" class="context-hint">Выберите сохранённую расшифровку.</p>
         <p id="saved-runs-empty" class="saved-runs-empty" hidden>Сохранённых прогонов нет.</p>
         <ul id="saved-runs-list" class="saved-runs-list" aria-label="Сохранённые прогоны"></ul>
-      </section>
+      </dialog>
 
-      <p id="status" role="status" aria-live="polite">Готово к выбору файла.</p>
-      <section id="support-report" class="support-report" aria-live="polite" hidden>
+      <p id="status" role="status" aria-live="polite"></p>
+      <dialog id="support-report" class="app-dialog support-report" aria-live="polite" aria-labelledby="support-report-title">
+        <div class="dialog-heading">
+          <h2 id="support-report-title">Не удалось выполнить распознавание</h2>
+          <button id="close-support-report" class="secondary-button" type="button">Закрыть</button>
+        </div>
         <p id="support-report-message"></p>
-        <button id="reveal-support-report" class="secondary-button" type="button">Открыть файл отчёта</button>
-      </section>
+        <button id="reveal-support-report" class="secondary-button" type="button">Открыть папку с отчётом</button>
+      </dialog>
 
-      <section id="editor-view" aria-labelledby="editor-title" hidden>
-        <div class="result-heading">
-          <h1 id="editor-title">Редактор</h1>
-          <div class="result-actions">
-            <div class="action-group">
-              <div class="action-group-actions">
-                <button id="save-project" type="button" disabled>Сохранить проект</button>
-                <button id="toggle-speakers" class="secondary-button" type="button" aria-expanded="false" aria-controls="editor-toolbar">Говорящие</button>
-                <button id="back-to-quick" class="secondary-button" type="button">К расшифровке</button>
-              </div>
+      <section id="document-view" class="document-view" aria-label="Расшифровка" hidden>
+        <div class="document-actions">
+          <button id="copy-text" class="secondary-button" type="button" disabled>Копировать</button>
+          <button id="save" class="secondary-button" type="button" disabled>Сохранить .txt</button>
+          <details id="document-more" class="editor-more">
+            <summary>Ещё</summary>
+            <div class="editor-more-actions">
+              <button id="open-speakers" class="secondary-button" type="button" aria-haspopup="dialog" aria-controls="editor-toolbar">Управлять говорящими</button>
+              <button id="open-editor-actions" class="secondary-button" type="button" aria-haspopup="dialog" aria-controls="editor-actions-dialog">Управление документом</button>
             </div>
-            <details class="editor-more">
-              <summary>Дополнительно</summary>
-              <div class="action-group-actions">
-                <button id="reset-recognized" class="secondary-button" type="button" disabled>Сбросить к распознанному</button>
-                <div class="view-toggle" role="group" aria-label="Режим просмотра текста">
-                  <button id="show-recognized" class="secondary-button" type="button" aria-pressed="false" disabled>Распознанное</button>
-                  <button id="show-edits" class="secondary-button is-active" type="button" aria-pressed="true" disabled>Правки</button>
-                </div>
-                <span id="run-actions-group" hidden>
-                <button id="reveal-run" class="secondary-button" type="button">Открыть в папке</button>
-                <button id="delete-run" class="danger-button" type="button">Удалить прогон</button>
-                </span>
-              </div>
-            </details>
+          </details>
+        </div>
+        <dialog id="editor-toolbar" class="app-dialog editor-dialog" aria-labelledby="speaker-tools-title">
+          <div class="dialog-heading">
+            <h2 id="speaker-tools-title">Говорящие</h2>
+            <button id="close-speakers" class="secondary-button" type="button">Готово</button>
           </div>
-        </div>
-        <div id="editor-toolbar" class="editor-toolbar" aria-label="Действия с документом" hidden>
-          <label class="speaker-name-field">
-            <span>Имя нового говорящего</span>
-            <input id="speaker-name" type="text" placeholder="Например, Следователь Карамчаков" autocomplete="off" disabled />
-          </label>
-          <button id="add-speaker" type="button" disabled>Добавить говорящего</button>
+          <p class="hint">Добавьте говорящего, затем назначьте его нужным абзацам текста.</p>
+          <div class="speaker-tools-content">
+            <label class="speaker-name-field">
+              <span>Имя нового говорящего</span>
+              <input id="speaker-name" type="text" placeholder="Например, Следователь Карамчаков" autocomplete="off" disabled />
+            </label>
+            <button id="add-speaker" type="button" disabled>Добавить говорящего</button>
+          </div>
           <ul id="speaker-list" class="speaker-list" aria-label="Созданные говорящие"></ul>
-        </div>
-        <p id="document-mode" hidden>Просмотр: нет документа</p>
+        </dialog>
+        <dialog id="editor-actions-dialog" class="app-dialog editor-dialog" aria-labelledby="editor-actions-title">
+          <div class="dialog-heading">
+            <h2 id="editor-actions-title">Управление документом</h2>
+            <button id="close-editor-actions" class="secondary-button" type="button">Готово</button>
+          </div>
+          <div class="document-actions-section">
+            <h3>Версии текста</h3>
+            <div class="action-group-actions">
+              <button id="reset-recognized" class="secondary-button" type="button" disabled>Вернуть распознанный текст</button>
+                <div class="view-toggle" role="group" aria-label="Режим просмотра текста">
+                  <button id="show-recognized" class="secondary-button" type="button" aria-pressed="false" disabled>Распознанный текст</button>
+                  <button id="show-edits" class="secondary-button is-active" type="button" aria-pressed="true" disabled>Мои правки</button>
+                </div>
+            </div>
+          </div>
+          <div id="run-actions-group" class="document-actions-section" hidden>
+            <h3>Сохранённый результат</h3>
+            <div class="action-group-actions">
+              <button id="reveal-run" class="secondary-button" type="button">Открыть в папке</button>
+              <button id="delete-run" class="danger-button" type="button">Удалить прогон</button>
+            </div>
+          </div>
+        </dialog>
         <div id="editor" class="editor" aria-live="polite">
           <p class="editor-placeholder">Здесь появится расшифровка.</p>
         </div>
-        <p class="context-hint editor-hint">Редактируйте текст как обычно. Для работы с говорящими откройте одноимённую кнопку. Обычный Enter добавляет перенос, Ctrl+Enter делит текст на два абзаца.</p>
       </section>
     </main>
     <script src="renderer.js"></script>

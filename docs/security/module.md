@@ -57,7 +57,7 @@ security audit и не утверждает наличие уязвимости 
 - **Implementation:** `src/main.js`: `validateWritableDataDirectory`,
   `getExistingManagedRunDirectory`, IPC `recognition:run`, `runs:open`,
   `run:reveal-in-folder` и `run:delete`. Формат и состав данных run — в
-  [документе редактора](../editor/module.md).
+  [документе расшифровки](../editor/module.md).
 - **Verification:** автоматических тестов этих security-инвариантов не найдено;
   ручная или ревью-проверка — проверить допустимые и недопустимые пути, включая
   подтверждение удаления; отдельная негативная проверка обхода границы run пока

@@ -1,23 +1,22 @@
 const selectFileButton = document.querySelector("#select-file");
 const transcribeButton = document.querySelector("#transcribe");
+const moreMenu = document.querySelector("#more-menu");
 const openSavedButton = document.querySelector("#open-saved");
 const toggleSettingsButton = document.querySelector("#toggle-settings");
-const quickView = document.querySelector("#quick-view");
-const quickResult = document.querySelector("#quick-result");
-const quickPreview = document.querySelector("#quick-preview");
 const selectedFileHint = document.querySelector("#selected-file-hint");
-const openEditorButton = document.querySelector("#open-editor");
-const backToQuickButton = document.querySelector("#back-to-quick");
-const toggleSpeakersButton = document.querySelector("#toggle-speakers");
-const editorView = document.querySelector("#editor-view");
+const documentView = document.querySelector("#document-view");
+const documentMore = document.querySelector("#document-more");
+const openSpeakersButton = document.querySelector("#open-speakers");
+const openEditorActionsButton = document.querySelector("#open-editor-actions");
 const advancedPanel = document.querySelector("#advanced-panel");
+const closeSettingsButton = document.querySelector("#close-settings");
 const closeSavedRunsButton = document.querySelector("#close-saved-runs");
 const savedRunsPanel = document.querySelector("#saved-runs");
 const savedRunsList = document.querySelector("#saved-runs-list");
 const savedRunsEmpty = document.querySelector("#saved-runs-empty");
+const savedRunsGuidance = document.querySelector("#saved-runs-guidance");
 const copyTextButton = document.querySelector("#copy-text");
 const saveButton = document.querySelector("#save");
-const saveProjectButton = document.querySelector("#save-project");
 const resetRecognizedButton = document.querySelector("#reset-recognized");
 const showRecognizedButton = document.querySelector("#show-recognized");
 const showEditsButton = document.querySelector("#show-edits");
@@ -28,6 +27,9 @@ const addSpeakerButton = document.querySelector("#add-speaker");
 const speakerNameInput = document.querySelector("#speaker-name");
 const speakerList = document.querySelector("#speaker-list");
 const editorToolbar = document.querySelector("#editor-toolbar");
+const closeSpeakersButton = document.querySelector("#close-speakers");
+const editorActionsDialog = document.querySelector("#editor-actions-dialog");
+const closeEditorActionsButton = document.querySelector("#close-editor-actions");
 const fileName = document.querySelector("#file-name");
 const resultsDirectory = document.querySelector("#results-directory");
 const selectResultsDirectoryButton = document.querySelector("#select-results-directory");
@@ -44,11 +46,16 @@ const status = document.querySelector("#status");
 const supportReport = document.querySelector("#support-report");
 const supportReportMessage = document.querySelector("#support-report-message");
 const revealSupportReportButton = document.querySelector("#reveal-support-report");
+const closeSupportReportButton = document.querySelector("#close-support-report");
+const recognitionProgress = document.querySelector("#recognition-progress");
+const recognitionProgressStage = document.querySelector("#recognition-progress-stage");
+const recognitionElapsed = document.querySelector("#recognition-elapsed");
 const editor = document.querySelector("#editor");
-const documentMode = document.querySelector("#document-mode");
 const clientVersion = document.querySelector("#client-version");
 
 const PROJECT_SCHEMA_VERSION = 1;
+const AUTOSAVE_DELAY_MS = 1000;
+const TOAST_DURATION_MS = 5000;
 const ICON_PATHS = {
   folder: ["M3 6h5l2 2h11v10H3z"],
   trash: ["M4 7h16", "M10 11v6", "M14 11v6", "M6 7l1 14h10l1-14", "M9 7V4h6v3"],
@@ -74,8 +81,12 @@ let preparedUpdate = null;
 let updateOperationInProgress = false;
 let availableOnlineUpdate = null;
 let pendingSupportReportPath = null;
-let isEditorOpen = false;
-let areSpeakerToolsOpen = false;
+let recognitionStartedAt = null;
+let recognitionTimerId = null;
+let autosaveTimerId = null;
+let autosavePromise = null;
+let projectRevision = 0;
+let toastTimerId = null;
 
 async function showClientVersion() {
   try {
@@ -106,42 +117,46 @@ function resetEditorState() {
   speakers = [];
   nextParagraphId = 1;
   nextSpeakerId = 1;
-  setSpeakerToolsVisible(false);
+  closeDialog(editorToolbar);
+}
+
+function clearToast() {
+  if (toastTimerId) {
+    window.clearTimeout(toastTimerId);
+  }
+  toastTimerId = null;
+  status.textContent = "";
+}
+
+function showToast(message) {
+  clearToast();
+  status.textContent = message;
+  toastTimerId = window.setTimeout(() => {
+    status.textContent = "";
+    toastTimerId = null;
+  }, TOAST_DURATION_MS);
 }
 
 function markProjectDirty() {
   isProjectDirty = true;
+  projectRevision += 1;
   if (sourceSegmentsPath) {
     hasProjectEdits = true;
   }
+  scheduleAutosave();
   setRunning(isRunning);
 }
 
-function setEditorOpen(open) {
-  isEditorOpen = open;
-  quickView.hidden = open;
-  editorView.hidden = !open;
-  if (open) {
-    advancedPanel.hidden = true;
-    toggleSettingsButton.setAttribute("aria-expanded", "false");
+function openDialog(dialog) {
+  if (!dialog.open) {
+    dialog.showModal();
   }
-  setRunning(isRunning);
-  renderEditor();
 }
 
-function setSettingsVisible(visible) {
-  advancedPanel.hidden = !visible;
-  toggleSettingsButton.setAttribute("aria-expanded", String(visible));
-}
-
-function setSpeakerToolsVisible(visible) {
-  areSpeakerToolsOpen = visible;
-  editorToolbar.hidden = !visible;
-  toggleSpeakersButton.setAttribute("aria-expanded", String(visible));
-}
-
-function confirmDiscardUnsavedChanges() {
-  return !isProjectDirty || window.confirm("Несохранённые правки будут потеряны. Продолжить?");
+function closeDialog(dialog) {
+  if (dialog.open) {
+    dialog.close();
+  }
 }
 
 function setRunning(running) {
@@ -153,15 +168,12 @@ function setRunning(running) {
   selectedFileHint.hidden = running || !selectedFile || Boolean(sourceSegmentsPath);
   openSavedButton.disabled = running;
   toggleSettingsButton.disabled = running;
-  openEditorButton.disabled = running || !sourceSegmentsPath;
-  backToQuickButton.disabled = running;
-  toggleSpeakersButton.disabled = running || !sourceSegmentsPath;
+  openSpeakersButton.disabled = running || !sourceSegmentsPath || isShowingRecognized;
   selectResultsDirectoryButton.disabled = running;
   revealResultsDirectoryButton.disabled = running || !resultsDirectoryPath;
   const hasCleanText = Boolean(getCleanText(visibleDocument.paragraphs, visibleDocument.speakers));
   copyTextButton.disabled = running || !hasCleanText;
   saveButton.disabled = running || !hasCleanText;
-  saveProjectButton.disabled = running || !sourceSegmentsPath;
   resetRecognizedButton.disabled = running || !sourceSegmentsPath;
   showRecognizedButton.disabled = running || !hasProjectEdits;
   showEditsButton.disabled = running || !hasProjectEdits;
@@ -171,11 +183,6 @@ function setRunning(running) {
   showRecognizedButton.setAttribute("aria-pressed", String(isShowingRecognized));
   showEditsButton.classList.toggle("is-active", !isShowingRecognized);
   showEditsButton.setAttribute("aria-pressed", String(!isShowingRecognized));
-  documentMode.textContent = !sourceSegmentsPath
-    ? "Просмотр: нет документа"
-    : isShowingRecognized || !hasProjectEdits
-      ? "Просмотр: распознанный текст"
-      : "Просмотр: правки";
   addSpeakerButton.disabled = running || readOnly;
   speakerNameInput.disabled = running || readOnly;
   savedRunsPanel.querySelectorAll("button").forEach((button) => {
@@ -187,17 +194,108 @@ function setRunning(running) {
 
 function clearSupportReport() {
   pendingSupportReportPath = null;
-  supportReport.hidden = true;
+  closeDialog(supportReport);
   supportReportMessage.textContent = "";
 }
 
 function showSupportReport(error) {
   pendingSupportReportPath = error.reportPath || null;
-  supportReport.hidden = false;
   revealSupportReportButton.hidden = !pendingSupportReportPath;
   supportReportMessage.textContent = pendingSupportReportPath
-    ? `Подготовлен технический отчёт (${error.code}). Откройте файл и отправьте его на ${error.supportEmail}. Аудио, расшифровки и имена файлов в отчёт не входят.`
+    ? `Подготовлен технический отчёт (${error.code}). Откройте папку, приложите файл к письму и отправьте его на ${error.supportEmail}. Аудио, расшифровки и имена файлов в отчёт не входят.`
     : `Не удалось подготовить технический отчёт (${error.code}). Сообщите этот код на ${error.supportEmail}.`;
+  openDialog(supportReport);
+}
+
+function formatElapsedTime(milliseconds) {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function startRecognitionProgress() {
+  recognitionStartedAt = Date.now();
+  recognitionProgressStage.textContent = "Запускаю распознавание…";
+  recognitionElapsed.value = "00:00";
+  recognitionProgress.hidden = false;
+  recognitionTimerId = window.setInterval(() => {
+    recognitionElapsed.value = formatElapsedTime(Date.now() - recognitionStartedAt);
+  }, 1000);
+}
+
+function stopRecognitionProgress() {
+  if (recognitionTimerId) {
+    window.clearInterval(recognitionTimerId);
+  }
+  recognitionTimerId = null;
+  recognitionStartedAt = null;
+  recognitionProgress.hidden = true;
+}
+
+function clearAutosaveTimer() {
+  if (autosaveTimerId) {
+    window.clearTimeout(autosaveTimerId);
+  }
+  autosaveTimerId = null;
+}
+
+function scheduleAutosave() {
+  clearAutosaveTimer();
+  if (!sourceSegmentsPath || !isProjectDirty) {
+    return;
+  }
+
+  autosaveTimerId = window.setTimeout(() => {
+    autosaveTimerId = null;
+    saveProjectAutomatically();
+  }, AUTOSAVE_DELAY_MS);
+}
+
+async function saveProjectAutomatically() {
+  if (autosavePromise) {
+    await autosavePromise;
+    return;
+  }
+  if (!sourceSegmentsPath || !isProjectDirty) {
+    return;
+  }
+
+  const revision = projectRevision;
+  const segmentsPath = sourceSegmentsPath;
+  autosavePromise = window.asr.saveProject(segmentsPath, serializeProject());
+  try {
+    await autosavePromise;
+    if (sourceSegmentsPath === segmentsPath && projectRevision === revision) {
+      isProjectDirty = false;
+    } else if (sourceSegmentsPath === segmentsPath) {
+      scheduleAutosave();
+    }
+  } catch (error) {
+    showToast(`Не удалось автоматически сохранить правки: ${error.message}`);
+  } finally {
+    autosavePromise = null;
+  }
+}
+
+async function confirmDocumentCanBeReplaced() {
+  if (!isProjectDirty) {
+    return true;
+  }
+
+  clearAutosaveTimer();
+  await saveProjectAutomatically();
+  return !isProjectDirty || window.confirm("Не удалось сохранить последние правки. Продолжить без них?");
+}
+
+async function flushAutosaveBeforeClose() {
+  clearAutosaveTimer();
+  await saveProjectAutomatically();
+}
+
+async function stopAutosaveForDeletedRun() {
+  clearAutosaveTimer();
+  if (autosavePromise) {
+    await autosavePromise;
+  }
 }
 
 function renderUpdateControls() {
@@ -224,34 +322,36 @@ async function refreshUpdateStatus() {
 
 window.asr.onUpdateCommitted(() => {
   refreshUpdateStatus();
-  status.textContent = "Обновление приложения применено.";
+  showToast("Обновление приложения применено.");
 });
 
 toggleSettingsButton.addEventListener("click", () => {
   if (isRunning) {
     return;
   }
-  setSettingsVisible(advancedPanel.hidden);
+  moreMenu.open = false;
+  openDialog(advancedPanel);
 });
 
-openEditorButton.addEventListener("click", () => {
-  if (!sourceSegmentsPath || isRunning) {
-    return;
+closeSettingsButton.addEventListener("click", () => closeDialog(advancedPanel));
+
+openSpeakersButton.addEventListener("click", () => {
+  if (!isRunning && sourceSegmentsPath && !isShowingRecognized) {
+    documentMore.open = false;
+    openDialog(editorToolbar);
   }
-  setEditorOpen(true);
 });
 
-backToQuickButton.addEventListener("click", () => {
+closeSpeakersButton.addEventListener("click", () => closeDialog(editorToolbar));
+
+openEditorActionsButton.addEventListener("click", () => {
   if (!isRunning) {
-    setEditorOpen(false);
+    documentMore.open = false;
+    openDialog(editorActionsDialog);
   }
 });
 
-toggleSpeakersButton.addEventListener("click", () => {
-  if (!isRunning) {
-    setSpeakerToolsVisible(!areSpeakerToolsOpen);
-  }
-});
+closeEditorActionsButton.addEventListener("click", () => closeDialog(editorActionsDialog));
 
 function formatTimecode(seconds) {
   if (!Number.isFinite(seconds)) {
@@ -339,11 +439,12 @@ async function loadResultsDirectory() {
   } catch (error) {
     resultsDirectory.textContent = "Папка результатов недоступна";
     resultsDirectory.title = "Папка результатов недоступна";
-    status.textContent = `Ошибка настроек: ${error.message}`;
+    showToast(`Ошибка настроек: ${error.message}`);
   }
 }
 
 function resetDeletedRunState() {
+  clearAutosaveTimer();
   selectedFile = null;
   sourceSegmentsPath = null;
   isSavedRunOpen = false;
@@ -356,7 +457,9 @@ function resetDeletedRunState() {
   fileName.value = "Файл не выбран";
   setSavedRunActionsVisible(false);
   renderSpeakerList();
-  setEditorOpen(false);
+  closeDialog(editorActionsDialog);
+  documentView.hidden = true;
+  renderEditor();
 }
 
 function formatSourceName(filePath) {
@@ -364,8 +467,12 @@ function formatSourceName(filePath) {
 }
 
 function setSavedRunsVisible(visible) {
-  savedRunsPanel.hidden = !visible;
   openSavedButton.setAttribute("aria-expanded", String(visible));
+  if (visible) {
+    openDialog(savedRunsPanel);
+  } else {
+    closeDialog(savedRunsPanel);
+  }
 }
 
 function formatRunDate(date) {
@@ -404,6 +511,7 @@ function updateActiveSavedRun() {
 function renderSavedRuns(runs) {
   savedRunsList.textContent = "";
   savedRunsEmpty.hidden = runs.length > 0;
+  savedRunsGuidance.hidden = runs.length === 0;
 
   for (const run of runs) {
     const item = document.createElement("li");
@@ -454,6 +562,7 @@ async function refreshSavedRuns() {
 }
 
 function applyOpenedSavedRun(result) {
+  clearAutosaveTimer();
   selectedFile = null;
   sourceSegmentsPath = null;
   clearRecognizedSource();
@@ -462,44 +571,44 @@ function applyOpenedSavedRun(result) {
   isShowingRecognized = false;
   openSpeakerPopoverParagraphId = null;
   resetEditorState();
-  fileName.value = formatSourceName(result.sourcePath);
+  fileName.value = "Сохранённая расшифровка";
   setRecognizedSource(result.segments);
   if (result.project) {
     const { migratedRemark } = restoreProject(result.project);
     hasProjectEdits = true;
-    status.textContent = migratedRemark
+    showToast(migratedRemark
       ? "Открыт сохранённый проект. Ремарки из старого файла преобразованы в обычный текст."
-      : "Открыт сохранённый проект редактора.";
+      : "Открыты сохранённые правки.");
   } else {
     loadSegments(result.segments);
-    status.textContent = result.segments.length
-      ? `Открыто: сегментов — ${result.segments.length}.`
-      : "В сохранённом результате нет сегментов.";
+    if (!result.segments.length) {
+      showToast("В сохранённом результате нет текста.");
+    }
   }
   sourceSegmentsPath = result.sourcePath;
   isSavedRunOpen = true;
   setSavedRunActionsVisible(true);
   isProjectDirty = false;
   renderSpeakerList();
+  renderEditor();
 }
 
 async function openSavedRun(segmentsPath) {
   if (isRunning) {
     return;
   }
-  if (!confirmDiscardUnsavedChanges()) {
+  if (!await confirmDocumentCanBeReplaced()) {
     return;
   }
 
   setRunning(true);
-  status.textContent = "Открываю сохранённый результат…";
+  clearToast();
   try {
     const result = await window.asr.openRun(segmentsPath);
     applyOpenedSavedRun(result);
     setSavedRunsVisible(false);
-    setEditorOpen(true);
   } catch (error) {
-    status.textContent = `Ошибка открытия: ${error.message}`;
+    showToast(`Ошибка открытия: ${error.message}`);
   } finally {
     setRunning(false);
     renderEditor();
@@ -512,12 +621,12 @@ async function revealSavedRun(segmentsPath) {
   }
 
   setRunning(true);
-  status.textContent = "Открываю папку прогона…";
+  clearToast();
   try {
     await window.asr.revealRunInFolder(segmentsPath);
-    status.textContent = "Папка прогона открыта.";
+    showToast("Папка прогона открыта.");
   } catch (error) {
-    status.textContent = `Ошибка открытия папки: ${error.message}`;
+    showToast(`Ошибка открытия папки: ${error.message}`);
   } finally {
     setRunning(false);
   }
@@ -528,21 +637,27 @@ async function deleteSavedRun(segmentsPath) {
     return;
   }
 
-  status.textContent = "Ожидаю подтверждение удаления прогона…";
+  clearToast();
   try {
     const confirmed = await window.asr.confirmDeleteRun(segmentsPath);
     if (!confirmed) {
-      status.textContent = "Удаление прогона отменено.";
+      showToast("Удаление прогона отменено.");
       return;
     }
 
+    if (segmentsPath === sourceSegmentsPath) {
+      await stopAutosaveForDeletedRun();
+    }
     setRunning(true);
-    status.textContent = "Удаляю прогон…";
+    clearToast();
     await window.asr.deleteRun(segmentsPath);
     await refreshSavedRuns();
-    status.textContent = "Прогон удалён вместе с подготовленным аудио, результатами и сохранёнными правками.";
+    if (segmentsPath === sourceSegmentsPath) {
+      resetDeletedRunState();
+    }
+    showToast("Прогон удалён вместе с подготовленным аудио, результатами и сохранёнными правками.");
   } catch (error) {
-    status.textContent = `Ошибка удаления прогона: ${error.message}`;
+    showToast(`Ошибка удаления прогона: ${error.message}`);
   } finally {
     setRunning(false);
   }
@@ -555,7 +670,7 @@ function loadSegments(segments, transcript = "") {
 
 function getVisibleDocument() {
   if (!isShowingRecognized) {
-    return { paragraphs, speakers, readOnly: !isEditorOpen };
+    return { paragraphs, speakers, readOnly: false };
   }
 
   return {
@@ -657,7 +772,7 @@ function renderSpeakerList() {
 function createSpeaker() {
   const normalizedName = speakerNameInput.value.trim();
   if (!normalizedName) {
-    status.textContent = "Введите имя нового говорящего.";
+    showToast("Введите имя нового говорящего.");
     speakerNameInput.focus();
     return;
   }
@@ -684,7 +799,7 @@ function getSelectionContext() {
 
   const range = selection.getRangeAt(0);
   if (!range.collapsed) {
-    status.textContent = "Поставьте курсор в нужное место текста.";
+    showToast("Поставьте курсор в нужное место текста.");
     return null;
   }
 
@@ -693,7 +808,7 @@ function getSelectionContext() {
     : range.commonAncestorContainer.parentElement;
   const textElement = node?.closest(".document-text");
   if (!textElement || !editor.contains(textElement)) {
-    status.textContent = "Поставьте курсор в абзац документа.";
+    showToast("Поставьте курсор в абзац документа.");
     return null;
   }
 
@@ -788,7 +903,7 @@ function splitParagraph() {
   const leftText = sourceText.slice(0, offset);
   const rightText = sourceText.slice(offset);
   if (!leftText.trim() || !rightText.trim()) {
-    status.textContent = "Ctrl+Enter делит только текст с обеих сторон курсора.";
+    showToast("Ctrl+Enter делит только текст с обеих сторон курсора.");
     return;
   }
   const originalStart = paragraph.start;
@@ -848,22 +963,20 @@ function setParagraphSpeaker(paragraphId, speakerId) {
     return;
   }
 
-  paragraph.type = speakerId === null ? "text" : "replica";
   paragraph.speakerId = speakerId;
   openSpeakerPopoverParagraphId = null;
   markProjectDirty();
   renderEditor();
 }
 
-function renderQuickPreview(visibleDocument) {
+function renderDocumentVisibility(visibleDocument) {
   const text = getCleanText(visibleDocument.paragraphs, visibleDocument.speakers);
-  quickResult.hidden = !text;
-  quickPreview.textContent = text;
+  documentView.hidden = !text;
 }
 
 function renderEditor() {
   const visibleDocument = getVisibleDocument();
-  renderQuickPreview(visibleDocument);
+  renderDocumentVisibility(visibleDocument);
   editor.replaceChildren();
   if (!visibleDocument.paragraphs.length) {
     const placeholder = document.createElement("p");
@@ -925,40 +1038,52 @@ function renderEditor() {
     const speaker = paragraph.type === "replica"
       ? getSpeaker(paragraph.speakerId, visibleDocument.speakers)
       : null;
-    if (!visibleDocument.readOnly && areSpeakerToolsOpen && paragraph.type === "replica") {
-      const speakerControl = document.createElement("button");
-      speakerControl.className = "speaker-control";
-      speakerControl.type = "button";
-      speakerControl.disabled = isRunning;
-      speakerControl.textContent = speaker ? speaker.name : "Назначить говорящего";
-      if (speaker) {
-        speakerControl.style.borderColor = speaker.color;
-      }
-      speakerControl.addEventListener("click", () => toggleSpeakerPopover(paragraph.id));
-      content.append(speakerControl);
-
-      if (openSpeakerPopoverParagraphId === paragraph.id) {
-        const popover = document.createElement("div");
-        popover.className = "speaker-popover";
-        popover.dataset.speakerPopover = "true";
-        const noSpeakerButton = document.createElement("button");
-        noSpeakerButton.type = "button";
-        noSpeakerButton.disabled = isRunning;
-        noSpeakerButton.textContent = "Без говорящего";
-        noSpeakerButton.setAttribute("aria-pressed", String(paragraph.speakerId === null));
-        noSpeakerButton.addEventListener("click", () => setParagraphSpeaker(paragraph.id, null));
-        popover.append(noSpeakerButton);
-        for (const availableSpeaker of speakers) {
-          const choice = document.createElement("button");
-          choice.type = "button";
-          choice.disabled = isRunning;
-          choice.textContent = availableSpeaker.name;
-          choice.style.color = availableSpeaker.color;
-          choice.setAttribute("aria-pressed", String(paragraph.speakerId === availableSpeaker.id));
-          choice.addEventListener("click", () => setParagraphSpeaker(paragraph.id, availableSpeaker.id));
-          popover.append(choice);
+    if (paragraph.type === "replica") {
+      if (visibleDocument.readOnly) {
+        if (speaker) {
+          const speakerName = document.createElement("span");
+          speakerName.className = "speaker-name";
+          speakerName.style.color = speaker.color;
+          speakerName.textContent = `${speaker.name}:`;
+          content.append(speakerName);
         }
-        paragraphElement.append(popover);
+      } else {
+        const speakerControl = document.createElement("button");
+        speakerControl.className = "speaker-control";
+        speakerControl.type = "button";
+        speakerControl.disabled = isRunning;
+        speakerControl.classList.toggle("is-unassigned", !speaker);
+        speakerControl.textContent = speaker ? `${speaker.name}:` : "+ говорящий";
+        if (speaker) {
+          speakerControl.style.borderColor = speaker.color;
+          speakerControl.style.color = speaker.color;
+        }
+        speakerControl.addEventListener("click", () => toggleSpeakerPopover(paragraph.id));
+        content.append(speakerControl);
+
+        if (openSpeakerPopoverParagraphId === paragraph.id) {
+          const popover = document.createElement("div");
+          popover.className = "speaker-popover";
+          popover.dataset.speakerPopover = "true";
+          const noSpeakerButton = document.createElement("button");
+          noSpeakerButton.type = "button";
+          noSpeakerButton.disabled = isRunning;
+          noSpeakerButton.textContent = "Без говорящего";
+          noSpeakerButton.setAttribute("aria-pressed", String(paragraph.speakerId === null));
+          noSpeakerButton.addEventListener("click", () => setParagraphSpeaker(paragraph.id, null));
+          popover.append(noSpeakerButton);
+          for (const availableSpeaker of speakers) {
+            const choice = document.createElement("button");
+            choice.type = "button";
+            choice.disabled = isRunning;
+            choice.textContent = availableSpeaker.name;
+            choice.style.color = availableSpeaker.color;
+            choice.setAttribute("aria-pressed", String(paragraph.speakerId === availableSpeaker.id));
+            choice.addEventListener("click", () => setParagraphSpeaker(paragraph.id, availableSpeaker.id));
+            popover.append(choice);
+          }
+          paragraphElement.append(popover);
+        }
       }
     }
     content.append(textElement);
@@ -987,16 +1112,16 @@ checkOnlineUpdateButton.addEventListener("click", async () => {
   }
   updateOperationInProgress = true;
   renderUpdateControls();
-  status.textContent = "Проверяю обновления приложения…";
+  clearToast();
   try {
     const result = await window.asr.checkOnlineUpdate();
     availableOnlineUpdate = result.available ? result : null;
-    status.textContent = result.available
+    showToast(result.available
       ? `Доступно обновление Client ${result.version}. Скачайте его, чтобы продолжить.`
-      : "Обновлений не найдено.";
+      : "Обновлений не найдено.");
   } catch (error) {
     availableOnlineUpdate = null;
-    status.textContent = `Не удалось проверить обновления: ${error.message}`;
+    showToast(`Не удалось проверить обновления: ${error.message}`);
   } finally {
     updateOperationInProgress = false;
     renderUpdateControls();
@@ -1009,13 +1134,13 @@ downloadOnlineUpdateButton.addEventListener("click", async () => {
   }
   updateOperationInProgress = true;
   renderUpdateControls();
-  status.textContent = `Скачиваю обновление Client ${availableOnlineUpdate.version}…`;
+  clearToast();
   try {
     selectedUpdatePackage = await window.asr.downloadOnlineUpdate();
     availableOnlineUpdate = null;
-    status.textContent = "Обновление скачано. Подготовьте его, когда будете готовы.";
+    showToast("Обновление скачано. Подготовьте его, когда будете готовы.");
   } catch (error) {
-    status.textContent = `Не удалось скачать обновление: ${error.message}`;
+    showToast(`Не удалось скачать обновление: ${error.message}`);
   } finally {
     updateOperationInProgress = false;
     renderUpdateControls();
@@ -1028,13 +1153,13 @@ prepareUpdateButton.addEventListener("click", async () => {
   }
   updateOperationInProgress = true;
   renderUpdateControls();
-  status.textContent = "Подготавливаю подписанное обновление…";
+  clearToast();
   try {
     preparedUpdate = await window.asr.prepareUpdate(selectedUpdatePackage);
     selectedUpdatePackage = null;
-    status.textContent = "Обновление подготовлено. Можно продолжать работу или перезапустить приложение для применения.";
+    showToast("Обновление подготовлено. Можно продолжать работу или перезапустить приложение для применения.");
   } catch (error) {
-    status.textContent = `Не удалось подготовить обновление: ${error.message}`;
+    showToast(`Не удалось подготовить обновление: ${error.message}`);
   } finally {
     updateOperationInProgress = false;
     renderUpdateControls();
@@ -1050,9 +1175,9 @@ cancelUpdateButton.addEventListener("click", async () => {
   try {
     await window.asr.cancelUpdate();
     preparedUpdate = null;
-    status.textContent = "Подготовленное обновление отменено.";
+    showToast("Подготовленное обновление отменено.");
   } catch (error) {
-    status.textContent = `Не удалось отменить обновление: ${error.message}`;
+    showToast(`Не удалось отменить обновление: ${error.message}`);
   } finally {
     updateOperationInProgress = false;
     renderUpdateControls();
@@ -1066,18 +1191,17 @@ activateUpdateButton.addEventListener("click", async () => {
   if (!window.confirm("Приложение перезапустится и будет временно недоступно, пока запускается новая версия. Продолжить?")) {
     return;
   }
-  if (!confirmDiscardUnsavedChanges()) {
+  if (!await confirmDocumentCanBeReplaced()) {
     return;
   }
-  isProjectDirty = false;
   updateOperationInProgress = true;
   renderUpdateControls();
-  status.textContent = "Перезапускаю приложение для проверки подготовленного обновления…";
+  clearToast();
   try {
     await window.asr.activateUpdate();
   } catch (error) {
     updateOperationInProgress = false;
-    status.textContent = `Не удалось применить обновление: ${error.message}`;
+    showToast(`Не удалось применить обновление: ${error.message}`);
     renderUpdateControls();
   }
 });
@@ -1087,11 +1211,12 @@ selectFileButton.addEventListener("click", async () => {
   if (!filePath) {
     return;
   }
-  if (!confirmDiscardUnsavedChanges()) {
+  if (!await confirmDocumentCanBeReplaced()) {
     return;
   }
 
-  setEditorOpen(false);
+  clearAutosaveTimer();
+  closeDialog(editorToolbar);
   selectedFile = filePath;
   sourceSegmentsPath = null;
   isSavedRunOpen = false;
@@ -1105,7 +1230,7 @@ selectFileButton.addEventListener("click", async () => {
   fileName.value = formatSourceName(filePath);
   renderSpeakerList();
   renderEditor();
-  status.textContent = "Файл выбран. Можно начать распознавание.";
+  clearToast();
   setRunning(false);
 });
 
@@ -1113,11 +1238,13 @@ transcribeButton.addEventListener("click", async () => {
   if (!selectedFile || isRunning) {
     return;
   }
-  if (!confirmDiscardUnsavedChanges()) {
+  if (!await confirmDocumentCanBeReplaced()) {
     return;
   }
 
   setRunning(true);
+  clearAutosaveTimer();
+  closeDialog(editorToolbar);
   sourceSegmentsPath = null;
   isSavedRunOpen = false;
   setSavedRunActionsVisible(false);
@@ -1130,12 +1257,14 @@ transcribeButton.addEventListener("click", async () => {
   renderSpeakerList();
   renderEditor();
   clearSupportReport();
-  status.textContent = "Запускаю распознавание…";
+  clearToast();
+  startRecognitionProgress();
   try {
     const response = await window.asr.transcribe(selectedFile);
+    stopRecognitionProgress();
     if (!response.ok) {
       showSupportReport(response.error);
-      status.textContent = `Ошибка: ${response.error.message}`;
+      showToast(`Ошибка: ${response.error.message}`);
       return;
     }
     const { result } = response;
@@ -1144,12 +1273,13 @@ transcribeButton.addEventListener("click", async () => {
     loadSegments(result.segments, result.transcript);
     isProjectDirty = false;
     renderEditor();
-    status.textContent = result.segments.length
-      ? `Готово: распознано сегментов — ${result.segments.length}.`
-      : "Готово: речь не найдена.";
+    if (!result.segments.length) {
+      showToast("Готово: речь не найдена.");
+    }
   } catch (error) {
-    status.textContent = `Ошибка: ${error.message}`;
+    showToast(`Ошибка: ${error.message}`);
   } finally {
+    stopRecognitionProgress();
     setRunning(false);
     renderEditor();
   }
@@ -1160,20 +1290,15 @@ openSavedButton.addEventListener("click", async () => {
     return;
   }
 
-  if (!savedRunsPanel.hidden) {
-    setSavedRunsVisible(false);
-    return;
-  }
-
+  moreMenu.open = false;
   setSavedRunsVisible(true);
   setRunning(true);
-  status.textContent = "Загружаю сохранённые прогоны…";
+  clearToast();
   try {
     await refreshSavedRuns();
-    status.textContent = "Выберите сохранённый прогон.";
   } catch (error) {
     setSavedRunsVisible(false);
-    status.textContent = `Ошибка загрузки списка: ${error.message}`;
+    showToast(`Ошибка загрузки списка: ${error.message}`);
   } finally {
     setRunning(false);
   }
@@ -1186,11 +1311,17 @@ revealSupportReportButton.addEventListener("click", async () => {
   try {
     await window.asr.revealSupportReport(pendingSupportReportPath);
   } catch (error) {
-    status.textContent = `Не удалось открыть файл отчёта: ${error.message}`;
+    showToast(`Не удалось открыть файл отчёта: ${error.message}`);
   }
 });
 
 closeSavedRunsButton.addEventListener("click", () => setSavedRunsVisible(false));
+
+closeSupportReportButton.addEventListener("click", () => closeDialog(supportReport));
+
+savedRunsPanel.addEventListener("close", () => {
+  openSavedButton.setAttribute("aria-expanded", "false");
+});
 
 selectResultsDirectoryButton.addEventListener("click", async () => {
   if (isRunning) {
@@ -1201,19 +1332,19 @@ selectResultsDirectoryButton.addEventListener("click", async () => {
   try {
     const dataDirectory = await window.asr.selectResultsDirectory();
     if (!dataDirectory) {
-      status.textContent = "Смена папки результатов отменена.";
+      showToast("Смена папки результатов отменена.");
       return;
     }
 
     setResultsDirectory(dataDirectory);
     isSavedRunOpen = false;
     setSavedRunActionsVisible(false);
-    if (!savedRunsPanel.hidden) {
+    if (savedRunsPanel.open) {
       await refreshSavedRuns();
     }
-    status.textContent = "Папка результатов изменена. Новые прогоны будут сохранены в ней.";
+    showToast("Папка результатов изменена. Новые прогоны будут сохранены в ней.");
   } catch (error) {
-    status.textContent = `Ошибка смены папки результатов: ${error.message}`;
+    showToast(`Ошибка смены папки результатов: ${error.message}`);
   } finally {
     setRunning(false);
   }
@@ -1225,12 +1356,12 @@ revealResultsDirectoryButton.addEventListener("click", async () => {
   }
 
   setRunning(true);
-  status.textContent = "Открываю папку результатов…";
+  clearToast();
   try {
     await window.asr.revealResultsDirectory();
-    status.textContent = "Папка результатов открыта.";
+    showToast("Папка результатов открыта.");
   } catch (error) {
-    status.textContent = `Ошибка открытия папки результатов: ${error.message}`;
+    showToast(`Ошибка открытия папки результатов: ${error.message}`);
   } finally {
     setRunning(false);
   }
@@ -1242,12 +1373,12 @@ revealRunButton.addEventListener("click", async () => {
   }
 
   setRunning(true);
-  status.textContent = "Открываю папку прогона…";
+  clearToast();
   try {
     await window.asr.revealRunInFolder(sourceSegmentsPath);
-    status.textContent = "Папка прогона открыта.";
+    showToast("Папка прогона открыта.");
   } catch (error) {
-    status.textContent = `Ошибка открытия папки: ${error.message}`;
+    showToast(`Ошибка открытия папки: ${error.message}`);
   } finally {
     setRunning(false);
   }
@@ -1258,21 +1389,22 @@ deleteRunButton.addEventListener("click", async () => {
     return;
   }
 
-  status.textContent = "Ожидаю подтверждение удаления прогона…";
+  clearToast();
   try {
     const confirmed = await window.asr.confirmDeleteRun(sourceSegmentsPath);
     if (!confirmed) {
-      status.textContent = "Удаление прогона отменено.";
+      showToast("Удаление прогона отменено.");
       return;
     }
 
+    await stopAutosaveForDeletedRun();
     setRunning(true);
-    status.textContent = "Удаляю прогон…";
+    clearToast();
     await window.asr.deleteRun(sourceSegmentsPath);
     resetDeletedRunState();
-    status.textContent = "Прогон удалён вместе с подготовленным аудио, результатами и сохранёнными правками.";
+    showToast("Прогон удалён вместе с подготовленным аудио, результатами и сохранёнными правками.");
   } catch (error) {
-    status.textContent = `Ошибка удаления прогона: ${error.message}`;
+    showToast(`Ошибка удаления прогона: ${error.message}`);
   } finally {
     setRunning(false);
   }
@@ -1303,8 +1435,9 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !savedRunsPanel.hidden) {
-    setSavedRunsVisible(false);
+  if (event.key === "Escape") {
+    moreMenu.open = false;
+    documentMore.open = false;
   }
 });
 
@@ -1312,9 +1445,9 @@ copyTextButton.addEventListener("click", async () => {
   try {
     const visibleDocument = getVisibleDocument();
     await window.asr.copyText(getCleanText(visibleDocument.paragraphs, visibleDocument.speakers));
-    status.textContent = "Чистый текст скопирован в буфер обмена.";
+    showToast("Чистый текст скопирован в буфер обмена.");
   } catch (error) {
-    status.textContent = `Ошибка копирования: ${error.message}`;
+    showToast(`Ошибка копирования: ${error.message}`);
   }
 });
 
@@ -1325,27 +1458,10 @@ saveButton.addEventListener("click", async () => {
       getCleanText(visibleDocument.paragraphs, visibleDocument.speakers),
     );
     if (savedPath) {
-      status.textContent = `Сохранено: ${savedPath}`;
+      showToast(`Сохранено: ${savedPath}`);
     }
   } catch (error) {
-    status.textContent = `Ошибка сохранения: ${error.message}`;
-  }
-});
-
-saveProjectButton.addEventListener("click", async () => {
-  if (!sourceSegmentsPath || isRunning) {
-    return;
-  }
-
-  setRunning(true);
-  try {
-    const savedPath = await window.asr.saveProject(sourceSegmentsPath, serializeProject());
-    isProjectDirty = false;
-    status.textContent = `Проект сохранён: ${savedPath}`;
-  } catch (error) {
-    status.textContent = `Ошибка сохранения проекта: ${error.message}`;
-  } finally {
-    setRunning(false);
+    showToast(`Ошибка сохранения: ${error.message}`);
   }
 });
 
@@ -1353,7 +1469,7 @@ resetRecognizedButton.addEventListener("click", async () => {
   if (!sourceSegmentsPath || isRunning) {
     return;
   }
-  if (!confirmDiscardUnsavedChanges()) {
+  if (!await confirmDocumentCanBeReplaced()) {
     return;
   }
 
@@ -1363,16 +1479,18 @@ resetRecognizedButton.addEventListener("click", async () => {
     setRecognizedSource(segments);
     resetEditorState();
     loadSegments(segments);
-    isProjectDirty = false;
+    isProjectDirty = true;
+    projectRevision += 1;
     hasProjectEdits = false;
     isShowingRecognized = false;
     openSpeakerPopoverParagraphId = null;
     renderSpeakerList();
-    status.textContent = segments.length
-      ? `Восстановлен распознанный текст: сегментов — ${segments.length}.`
-      : "В сохранённом результате нет сегментов.";
+    scheduleAutosave();
+    showToast(segments.length
+      ? "Восстановлен распознанный текст."
+      : "В сохранённом результате нет текста.");
   } catch (error) {
-    status.textContent = `Ошибка сброса: ${error.message}`;
+    showToast(`Ошибка сброса: ${error.message}`);
   } finally {
     setRunning(false);
     renderEditor();
@@ -1387,7 +1505,7 @@ showRecognizedButton.addEventListener("click", () => {
   isShowingRecognized = true;
   setRunning(isRunning);
   renderEditor();
-  status.textContent = "Показан распознанный текст. Правки сохранены в памяти.";
+  showToast("Показан распознанный текст. Правки сохранены в памяти.");
 });
 
 showEditsButton.addEventListener("click", () => {
@@ -1398,15 +1516,16 @@ showEditsButton.addEventListener("click", () => {
   isShowingRecognized = false;
   setRunning(isRunning);
   renderEditor();
-  status.textContent = "Показаны правки редактора.";
+  showToast("Показаны правки редактора.");
 });
 
-window.asr.onCloseRequested(() => {
+window.asr.onCloseRequested(async () => {
+  await flushAutosaveBeforeClose();
   window.asr.reportProjectDirty(isProjectDirty);
 });
 
 window.asr.onProgress((message) => {
-  status.textContent = message;
+  recognitionProgressStage.textContent = message;
 });
 
 loadResultsDirectory();

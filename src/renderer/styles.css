@@ -26,6 +26,7 @@
   --radius-lg: 8px;
   --radius-pill: 12px;
   --shadow-menu: 0 4px 12px rgb(23 32 51 / 18%);
+  --shadow-dialog: 0 16px 48px rgb(23 32 51 / 24%);
   --content-width: 920px;
   --button-padding: 10px 16px;
   color: var(--color-text);
@@ -71,11 +72,10 @@ main {
   color: var(--color-primary);
 }
 
-.more-menu-actions {
+.more-menu-actions,
+.editor-more-actions {
   position: absolute;
   z-index: 2;
-  top: var(--space-7);
-  right: 0;
   display: grid;
   gap: var(--space-2);
   width: max-content;
@@ -86,17 +86,22 @@ main {
   box-shadow: var(--shadow-menu);
 }
 
-.advanced-panel,
+.more-menu-actions {
+  top: var(--space-7);
+  right: 0;
+}
+
+.editor-more-actions {
+  top: calc(100% + var(--space-2));
+  left: 0;
+}
+
 .quick-result {
   margin: var(--space-6) 0;
   padding: var(--space-5);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
-}
-
-.advanced-panel h2 {
-  margin-bottom: var(--space-4);
 }
 
 .advanced-update {
@@ -121,6 +126,24 @@ h2 {
   color: var(--color-muted);
 }
 
+#status:empty {
+  display: none;
+}
+
+#status {
+  position: fixed;
+  z-index: 1;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  max-width: min(520px, calc(100vw - var(--space-8)));
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-menu);
+}
+
 .context-hint {
   margin: var(--space-3) 0 0;
   padding: var(--space-2) var(--space-3);
@@ -129,6 +152,36 @@ h2 {
   color: var(--color-muted);
   background: var(--color-primary-soft);
   font-size: 14px;
+}
+
+.recognition-progress {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.recognition-progress[hidden] {
+  display: none;
+}
+
+.recognition-progress-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.recognition-progress-heading p {
+  margin: 0;
+}
+
+#recognition-elapsed {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .controls,
@@ -302,30 +355,9 @@ button:disabled {
   background: var(--color-danger-border);
 }
 
-.saved-runs {
-  margin: 0 0 var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-}
-
-.support-report {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  align-items: center;
-  margin: 0 0 var(--space-5);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-muted);
-  background: var(--color-surface);
-}
-
 .support-report p {
-  flex: 1 1 360px;
-  margin: 0;
+  margin: 0 0 var(--space-4);
+  color: var(--color-muted);
 }
 
 .saved-runs-heading {
@@ -388,8 +420,8 @@ button:disabled {
 .editor {
   box-sizing: border-box;
   width: 100%;
-  min-height: 320px;
-  padding: var(--space-5) 0;
+  min-height: 0;
+  padding: 0;
   background: var(--color-surface);
 }
 
@@ -403,16 +435,77 @@ button:disabled {
   font-size: 14px;
 }
 
-.editor-toolbar {
+.document-view {
+  margin: var(--space-6) 0;
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.document-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: 40px;
+  margin-bottom: var(--space-4);
+}
+
+.app-dialog {
+  box-sizing: border-box;
+  width: min(680px, calc(100vw - var(--space-8)));
+  max-height: min(760px, calc(100vh - var(--space-8)));
+  margin: auto;
+  padding: var(--space-6);
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-dialog);
+}
+
+.app-dialog:not([open]) {
+  display: none;
+}
+
+.app-dialog::backdrop {
+  background: rgb(23 32 51 / 38%);
+}
+
+.dialog-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  align-items: center;
+  margin-bottom: var(--space-5);
+}
+
+.dialog-heading h2,
+.document-actions-section h3 {
+  margin: 0;
+}
+
+.editor-dialog {
+  width: min(600px, calc(100vw - var(--space-8)));
+}
+
+.speaker-tools-content {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
   align-items: end;
-  margin-bottom: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  margin: var(--space-4) 0;
+}
+
+.document-actions-section {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.document-actions-section + .document-actions-section {
+  margin-top: var(--space-6);
 }
 
 .speaker-name-field {
@@ -433,15 +526,15 @@ button:disabled {
 .document-paragraph {
   position: relative;
   display: grid;
-  grid-template-columns: 126px minmax(0, 1fr);
-  gap: var(--space-4);
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-3);
   padding: var(--space-2) 0;
 }
 
 .paragraph-timecode {
-  padding-top: var(--space-1);
+  padding-top: 3px;
   color: var(--color-muted);
-  font-size: 14px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -451,19 +544,30 @@ button:disabled {
 }
 
 .speaker-control {
-  margin: 0 6px var(--space-1) 0;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border-strong);
-  color: var(--color-muted);
-  background: var(--color-surface-control);
-  font-size: 13px;
+  margin: 0 6px 0 0;
+  padding: 0;
+  border: 0;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+}
+
+.speaker-control.is-unassigned {
+  color: var(--color-primary);
+  font-weight: 400;
+}
+
+.speaker-name {
+  margin-right: 6px;
+  font-weight: 600;
 }
 
 .speaker-popover {
   position: absolute;
   z-index: 1;
-  top: 30px;
-  left: 142px;
+  top: 32px;
+  left: 0;
   display: grid;
   gap: var(--space-1);
   min-width: 220px;

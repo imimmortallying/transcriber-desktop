@@ -634,7 +634,13 @@ ipcMain.handle("project:save", async (_event, segmentsPath, project) => {
   }
 
   const editsPath = getEditsPath(segmentsPath);
-  await writeFile(editsPath, `${JSON.stringify(project, null, 2)}\n`, "utf8");
+  const temporaryEditsPath = `${editsPath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryEditsPath, `${JSON.stringify(project, null, 2)}\n`, "utf8");
+    await rename(temporaryEditsPath, editsPath);
+  } finally {
+    await rm(temporaryEditsPath, { force: true }).catch(() => {});
+  }
   return editsPath;
 });
 
