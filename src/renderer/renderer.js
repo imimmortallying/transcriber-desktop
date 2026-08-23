@@ -1,6 +1,16 @@
 const selectFileButton = document.querySelector("#select-file");
 const transcribeButton = document.querySelector("#transcribe");
 const openSavedButton = document.querySelector("#open-saved");
+const toggleSettingsButton = document.querySelector("#toggle-settings");
+const quickView = document.querySelector("#quick-view");
+const quickResult = document.querySelector("#quick-result");
+const quickPreview = document.querySelector("#quick-preview");
+const selectedFileHint = document.querySelector("#selected-file-hint");
+const openEditorButton = document.querySelector("#open-editor");
+const backToQuickButton = document.querySelector("#back-to-quick");
+const toggleSpeakersButton = document.querySelector("#toggle-speakers");
+const editorView = document.querySelector("#editor-view");
+const advancedPanel = document.querySelector("#advanced-panel");
 const closeSavedRunsButton = document.querySelector("#close-saved-runs");
 const savedRunsPanel = document.querySelector("#saved-runs");
 const savedRunsList = document.querySelector("#saved-runs-list");
@@ -64,6 +74,8 @@ let preparedUpdate = null;
 let updateOperationInProgress = false;
 let availableOnlineUpdate = null;
 let pendingSupportReportPath = null;
+let isEditorOpen = false;
+let areSpeakerToolsOpen = false;
 
 async function showClientVersion() {
   try {
@@ -94,6 +106,7 @@ function resetEditorState() {
   speakers = [];
   nextParagraphId = 1;
   nextSpeakerId = 1;
+  setSpeakerToolsVisible(false);
 }
 
 function markProjectDirty() {
@@ -102,6 +115,29 @@ function markProjectDirty() {
     hasProjectEdits = true;
   }
   setRunning(isRunning);
+}
+
+function setEditorOpen(open) {
+  isEditorOpen = open;
+  quickView.hidden = open;
+  editorView.hidden = !open;
+  if (open) {
+    advancedPanel.hidden = true;
+    toggleSettingsButton.setAttribute("aria-expanded", "false");
+  }
+  setRunning(isRunning);
+  renderEditor();
+}
+
+function setSettingsVisible(visible) {
+  advancedPanel.hidden = !visible;
+  toggleSettingsButton.setAttribute("aria-expanded", String(visible));
+}
+
+function setSpeakerToolsVisible(visible) {
+  areSpeakerToolsOpen = visible;
+  editorToolbar.hidden = !visible;
+  toggleSpeakersButton.setAttribute("aria-expanded", String(visible));
 }
 
 function confirmDiscardUnsavedChanges() {
@@ -114,7 +150,12 @@ function setRunning(running) {
   const readOnly = visibleDocument.readOnly;
   selectFileButton.disabled = running;
   transcribeButton.disabled = running || !selectedFile;
+  selectedFileHint.hidden = running || !selectedFile || Boolean(sourceSegmentsPath);
   openSavedButton.disabled = running;
+  toggleSettingsButton.disabled = running;
+  openEditorButton.disabled = running || !sourceSegmentsPath;
+  backToQuickButton.disabled = running;
+  toggleSpeakersButton.disabled = running || !sourceSegmentsPath;
   selectResultsDirectoryButton.disabled = running;
   revealResultsDirectoryButton.disabled = running || !resultsDirectoryPath;
   const hasCleanText = Boolean(getCleanText(visibleDocument.paragraphs, visibleDocument.speakers));
@@ -166,10 +207,10 @@ function renderUpdateControls() {
   prepareUpdateButton.disabled = updateOperationInProgress || !selectedUpdatePackage || Boolean(preparedUpdate);
   activateUpdateButton.disabled = updateOperationInProgress || isRunning || !preparedUpdate;
   cancelUpdateButton.disabled = updateOperationInProgress || isRunning || !preparedUpdate;
-  updatePackageName.textContent = selectedUpdatePackage || "No update package selected";
+  updatePackageName.textContent = selectedUpdatePackage || "Файл обновления не выбран";
   updateStatus.textContent = preparedUpdate
-    ? `Prepared Client ${preparedUpdate.candidateClient.version}; restart is required to apply it.`
-    : "No Client Update is prepared.";
+    ? `Обновление Client ${preparedUpdate.candidateClient.version} подготовлено. Для применения нужен перезапуск.`
+    : "Обновление не подготовлено.";
 }
 
 async function refreshUpdateStatus() {
@@ -183,7 +224,33 @@ async function refreshUpdateStatus() {
 
 window.asr.onUpdateCommitted(() => {
   refreshUpdateStatus();
-  status.textContent = "Client Update was applied.";
+  status.textContent = "Обновление приложения применено.";
+});
+
+toggleSettingsButton.addEventListener("click", () => {
+  if (isRunning) {
+    return;
+  }
+  setSettingsVisible(advancedPanel.hidden);
+});
+
+openEditorButton.addEventListener("click", () => {
+  if (!sourceSegmentsPath || isRunning) {
+    return;
+  }
+  setEditorOpen(true);
+});
+
+backToQuickButton.addEventListener("click", () => {
+  if (!isRunning) {
+    setEditorOpen(false);
+  }
+});
+
+toggleSpeakersButton.addEventListener("click", () => {
+  if (!isRunning) {
+    setSpeakerToolsVisible(!areSpeakerToolsOpen);
+  }
 });
 
 function formatTimecode(seconds) {
@@ -289,7 +356,11 @@ function resetDeletedRunState() {
   fileName.value = "Файл не выбран";
   setSavedRunActionsVisible(false);
   renderSpeakerList();
-  renderEditor();
+  setEditorOpen(false);
+}
+
+function formatSourceName(filePath) {
+  return String(filePath).split(/[\\/]/).filter(Boolean).at(-1) || "Файл не выбран";
 }
 
 function setSavedRunsVisible(visible) {
@@ -391,7 +462,7 @@ function applyOpenedSavedRun(result) {
   isShowingRecognized = false;
   openSpeakerPopoverParagraphId = null;
   resetEditorState();
-  fileName.value = result.sourcePath;
+  fileName.value = formatSourceName(result.sourcePath);
   setRecognizedSource(result.segments);
   if (result.project) {
     const { migratedRemark } = restoreProject(result.project);
@@ -426,6 +497,7 @@ async function openSavedRun(segmentsPath) {
     const result = await window.asr.openRun(segmentsPath);
     applyOpenedSavedRun(result);
     setSavedRunsVisible(false);
+    setEditorOpen(true);
   } catch (error) {
     status.textContent = `Ошибка открытия: ${error.message}`;
   } finally {
@@ -483,7 +555,7 @@ function loadSegments(segments, transcript = "") {
 
 function getVisibleDocument() {
   if (!isShowingRecognized) {
-    return { paragraphs, speakers, readOnly: false };
+    return { paragraphs, speakers, readOnly: !isEditorOpen };
   }
 
   return {
@@ -783,8 +855,15 @@ function setParagraphSpeaker(paragraphId, speakerId) {
   renderEditor();
 }
 
+function renderQuickPreview(visibleDocument) {
+  const text = getCleanText(visibleDocument.paragraphs, visibleDocument.speakers);
+  quickResult.hidden = !text;
+  quickPreview.textContent = text;
+}
+
 function renderEditor() {
   const visibleDocument = getVisibleDocument();
+  renderQuickPreview(visibleDocument);
   editor.replaceChildren();
   if (!visibleDocument.paragraphs.length) {
     const placeholder = document.createElement("p");
@@ -846,7 +925,7 @@ function renderEditor() {
     const speaker = paragraph.type === "replica"
       ? getSpeaker(paragraph.speakerId, visibleDocument.speakers)
       : null;
-    if (!visibleDocument.readOnly && paragraph.type === "replica") {
+    if (!visibleDocument.readOnly && areSpeakerToolsOpen && paragraph.type === "replica") {
       const speakerControl = document.createElement("button");
       speakerControl.className = "speaker-control";
       speakerControl.type = "button";
@@ -908,16 +987,16 @@ checkOnlineUpdateButton.addEventListener("click", async () => {
   }
   updateOperationInProgress = true;
   renderUpdateControls();
-  status.textContent = "Checking for Client Updates…";
+  status.textContent = "Проверяю обновления приложения…";
   try {
     const result = await window.asr.checkOnlineUpdate();
     availableOnlineUpdate = result.available ? result : null;
     status.textContent = result.available
-      ? `Client ${result.version} is available. Download it to continue.`
-      : "No Client Update is available.";
+      ? `Доступно обновление Client ${result.version}. Скачайте его, чтобы продолжить.`
+      : "Обновлений не найдено.";
   } catch (error) {
     availableOnlineUpdate = null;
-    status.textContent = `Unable to check for updates: ${error.message}`;
+    status.textContent = `Не удалось проверить обновления: ${error.message}`;
   } finally {
     updateOperationInProgress = false;
     renderUpdateControls();
@@ -930,13 +1009,13 @@ downloadOnlineUpdateButton.addEventListener("click", async () => {
   }
   updateOperationInProgress = true;
   renderUpdateControls();
-  status.textContent = `Downloading Client ${availableOnlineUpdate.version}…`;
+  status.textContent = `Скачиваю обновление Client ${availableOnlineUpdate.version}…`;
   try {
     selectedUpdatePackage = await window.asr.downloadOnlineUpdate();
     availableOnlineUpdate = null;
-    status.textContent = "Client Update downloaded. Prepare it when ready.";
+    status.textContent = "Обновление скачано. Подготовьте его, когда будете готовы.";
   } catch (error) {
-    status.textContent = `Unable to download Client Update: ${error.message}`;
+    status.textContent = `Не удалось скачать обновление: ${error.message}`;
   } finally {
     updateOperationInProgress = false;
     renderUpdateControls();
@@ -949,13 +1028,13 @@ prepareUpdateButton.addEventListener("click", async () => {
   }
   updateOperationInProgress = true;
   renderUpdateControls();
-  status.textContent = "Preparing signed Client Update…";
+  status.textContent = "Подготавливаю подписанное обновление…";
   try {
     preparedUpdate = await window.asr.prepareUpdate(selectedUpdatePackage);
     selectedUpdatePackage = null;
-    status.textContent = "Client Update is prepared. Continue working or restart to apply it.";
+    status.textContent = "Обновление подготовлено. Можно продолжать работу или перезапустить приложение для применения.";
   } catch (error) {
-    status.textContent = `Update preparation failed: ${error.message}`;
+    status.textContent = `Не удалось подготовить обновление: ${error.message}`;
   } finally {
     updateOperationInProgress = false;
     renderUpdateControls();
@@ -971,9 +1050,9 @@ cancelUpdateButton.addEventListener("click", async () => {
   try {
     await window.asr.cancelUpdate();
     preparedUpdate = null;
-    status.textContent = "Prepared Client Update was cancelled.";
+    status.textContent = "Подготовленное обновление отменено.";
   } catch (error) {
-    status.textContent = `Update cancellation failed: ${error.message}`;
+    status.textContent = `Не удалось отменить обновление: ${error.message}`;
   } finally {
     updateOperationInProgress = false;
     renderUpdateControls();
@@ -984,7 +1063,7 @@ activateUpdateButton.addEventListener("click", async () => {
   if (!preparedUpdate || updateOperationInProgress || isRunning) {
     return;
   }
-  if (!window.confirm("ASR will restart and be temporarily unavailable while the new Client starts. Continue?")) {
+  if (!window.confirm("Приложение перезапустится и будет временно недоступно, пока запускается новая версия. Продолжить?")) {
     return;
   }
   if (!confirmDiscardUnsavedChanges()) {
@@ -993,12 +1072,12 @@ activateUpdateButton.addEventListener("click", async () => {
   isProjectDirty = false;
   updateOperationInProgress = true;
   renderUpdateControls();
-  status.textContent = "Restarting ASR to validate the prepared Client Update…";
+  status.textContent = "Перезапускаю приложение для проверки подготовленного обновления…";
   try {
     await window.asr.activateUpdate();
   } catch (error) {
     updateOperationInProgress = false;
-    status.textContent = `Update activation failed: ${error.message}`;
+    status.textContent = `Не удалось применить обновление: ${error.message}`;
     renderUpdateControls();
   }
 });
@@ -1012,6 +1091,7 @@ selectFileButton.addEventListener("click", async () => {
     return;
   }
 
+  setEditorOpen(false);
   selectedFile = filePath;
   sourceSegmentsPath = null;
   isSavedRunOpen = false;
@@ -1022,7 +1102,7 @@ selectFileButton.addEventListener("click", async () => {
   hasProjectEdits = false;
   isShowingRecognized = false;
   openSpeakerPopoverParagraphId = null;
-  fileName.value = filePath;
+  fileName.value = formatSourceName(filePath);
   renderSpeakerList();
   renderEditor();
   status.textContent = "Файл выбран. Можно начать распознавание.";

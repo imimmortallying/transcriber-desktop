@@ -8,42 +8,68 @@
   </head>
   <body>
     <main>
-      <p id="client-version">Client</p>
-      <h1>Локальная расшифровка</h1>
-      <p class="hint">Выберите аудио- или видеофайл. Распознавание выполняется на этом компьютере.</p>
+      <header class="app-header">
+        <details class="more-menu">
+          <summary>Ещё</summary>
+          <div class="more-menu-actions">
+            <button id="open-saved" class="secondary-button" type="button" aria-expanded="false" aria-controls="saved-runs">Мои расшифровки</button>
+            <button id="toggle-settings" class="secondary-button" type="button" aria-expanded="false" aria-controls="advanced-panel">Настройки</button>
+          </div>
+        </details>
+      </header>
 
-      <section class="controls" aria-label="Выбор файла">
-        <div class="action-group">
-          <p class="action-group-title">Источник</p>
-          <div class="action-group-actions">
-            <button id="select-file" type="button">Выбрать файл</button>
-            <output id="file-name">Файл не выбран</output>
-            <button id="transcribe" type="button" disabled>Распознать</button>
-            <button id="open-saved" type="button" aria-expanded="false" aria-controls="saved-runs">Открыть сохранённый результат</button>
+      <section id="quick-view" aria-labelledby="quick-title">
+        <h1 id="quick-title">Локальная расшифровка</h1>
+        <p class="hint">Выберите аудио- или видеофайл. Распознавание выполняется на этом компьютере.</p>
+        <p class="context-hint">Файл и текст остаются на этом компьютере.</p>
+
+        <section class="controls" aria-label="Выбор файла">
+          <div class="action-group">
+            <div class="action-group-actions">
+              <button id="select-file" type="button">Выбрать файл</button>
+              <output id="file-name">Файл не выбран</output>
+              <button id="transcribe" type="button" disabled>Распознать</button>
+            </div>
           </div>
-          <div class="results-directory">
-            <span class="results-directory-label">Папка результатов:</span>
-            <output id="results-directory" title="Загружаю путь…">Загружаю путь…</output>
-            <button id="select-results-directory" class="secondary-button" type="button">Изменить папку</button>
-            <button id="reveal-results-directory" class="secondary-button" type="button" disabled>Открыть</button>
+        </section>
+        <p id="selected-file-hint" class="context-hint" hidden>Файл выбран. Нажмите «Распознать», чтобы получить текст.</p>
+
+        <section id="quick-result" class="quick-result" aria-labelledby="quick-result-title" hidden>
+          <div class="result-heading">
+            <h2 id="quick-result-title">Текст готов</h2>
+            <div class="action-group-actions">
+              <button id="copy-text" class="secondary-button" type="button" disabled>Копировать</button>
+              <button id="save" class="secondary-button" type="button" disabled>Сохранить .txt</button>
+              <button id="open-editor" type="button" disabled>Открыть в редакторе</button>
+            </div>
           </div>
-        </div>
+          <p class="context-hint">Скопируйте текст, сохраните его в файл или откройте редактор для дальнейшей работы.</p>
+          <div id="quick-preview" class="quick-preview" aria-live="polite"></div>
+        </section>
       </section>
 
-      <section class="controls" aria-label="Client Update">
-        <div class="action-group">
-          <p class="action-group-title">Client Update</p>
-          <div class="action-group-actions">
-            <button id="check-online-update" class="secondary-button" type="button">Check for updates</button>
-            <button id="download-online-update" type="button" disabled>Download update</button>
-            <button id="select-update-package" class="secondary-button" type="button">Choose .asrupdate</button>
-            <output id="update-package-name">No update package selected</output>
-            <button id="prepare-update" type="button" disabled>Prepare update</button>
-            <button id="activate-update" type="button" disabled>Restart and apply</button>
-            <button id="cancel-update" class="secondary-button" type="button" disabled>Cancel prepared update</button>
-          </div>
-          <p id="update-status" class="hint">No Client Update is prepared.</p>
+      <section id="advanced-panel" class="advanced-panel" aria-labelledby="advanced-title" hidden>
+        <h2 id="advanced-title">Настройки</h2>
+        <div class="results-directory">
+          <span class="results-directory-label">Папка результатов:</span>
+          <output id="results-directory" title="Загружаю путь…">Загружаю путь…</output>
+          <button id="select-results-directory" class="secondary-button" type="button">Изменить</button>
+          <button id="reveal-results-directory" class="secondary-button" type="button" disabled>Открыть папку</button>
         </div>
+        <details class="advanced-update">
+          <summary>Обновление приложения</summary>
+          <div class="action-group-actions">
+            <button id="check-online-update" class="secondary-button" type="button">Проверить обновления</button>
+            <button id="download-online-update" type="button" disabled>Скачать обновление</button>
+            <button id="select-update-package" class="secondary-button" type="button">Выбрать файл обновления</button>
+            <output id="update-package-name">Файл обновления не выбран</output>
+            <button id="prepare-update" type="button" disabled>Подготовить</button>
+            <button id="activate-update" type="button" disabled>Перезапустить и применить</button>
+            <button id="cancel-update" class="secondary-button" type="button" disabled>Отменить</button>
+          </div>
+          <p id="update-status" class="hint">Обновление не подготовлено.</p>
+        </details>
+        <p id="client-version">Client</p>
       </section>
 
       <section id="saved-runs" class="saved-runs" aria-labelledby="saved-runs-title" hidden>
@@ -63,37 +89,34 @@
         <button id="reveal-support-report" class="secondary-button" type="button">Открыть файл отчёта</button>
       </section>
 
-      <section aria-labelledby="result-title">
+      <section id="editor-view" aria-labelledby="editor-title" hidden>
         <div class="result-heading">
-          <div class="result-title-actions">
-            <h2 id="result-title">Текст</h2>
-            <button id="copy-text" class="icon-button" type="button" aria-label="Копировать чистый текст" title="Копировать чистый текст" disabled>
-              <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M9 8h10v12H9zM5 4h10v4M5 4v12h4" /></svg>
-            </button>
-          </div>
+          <h1 id="editor-title">Редактор</h1>
           <div class="result-actions">
             <div class="action-group">
-              <p class="action-group-title">Проект</p>
               <div class="action-group-actions">
-                <button id="save" type="button" disabled>Сохранить .txt</button>
                 <button id="save-project" type="button" disabled>Сохранить проект</button>
+                <button id="toggle-speakers" class="secondary-button" type="button" aria-expanded="false" aria-controls="editor-toolbar">Говорящие</button>
+                <button id="back-to-quick" class="secondary-button" type="button">К расшифровке</button>
+              </div>
+            </div>
+            <details class="editor-more">
+              <summary>Дополнительно</summary>
+              <div class="action-group-actions">
                 <button id="reset-recognized" class="secondary-button" type="button" disabled>Сбросить к распознанному</button>
                 <div class="view-toggle" role="group" aria-label="Режим просмотра текста">
                   <button id="show-recognized" class="secondary-button" type="button" aria-pressed="false" disabled>Распознанное</button>
                   <button id="show-edits" class="secondary-button is-active" type="button" aria-pressed="true" disabled>Правки</button>
                 </div>
-              </div>
-            </div>
-            <div id="run-actions-group" class="action-group" hidden>
-              <p class="action-group-title">Прогон на диске</p>
-              <div class="action-group-actions">
+                <span id="run-actions-group" hidden>
                 <button id="reveal-run" class="secondary-button" type="button">Открыть в папке</button>
                 <button id="delete-run" class="danger-button" type="button">Удалить прогон</button>
+                </span>
               </div>
-            </div>
+            </details>
           </div>
         </div>
-        <div id="editor-toolbar" class="editor-toolbar" aria-label="Действия с документом">
+        <div id="editor-toolbar" class="editor-toolbar" aria-label="Действия с документом" hidden>
           <label class="speaker-name-field">
             <span>Имя нового говорящего</span>
             <input id="speaker-name" type="text" placeholder="Например, Следователь Карамчаков" autocomplete="off" disabled />
@@ -101,11 +124,11 @@
           <button id="add-speaker" type="button" disabled>Добавить говорящего</button>
           <ul id="speaker-list" class="speaker-list" aria-label="Созданные говорящие"></ul>
         </div>
-        <p id="document-mode">Просмотр: нет документа</p>
+        <p id="document-mode" hidden>Просмотр: нет документа</p>
         <div id="editor" class="editor" aria-live="polite">
           <p class="editor-placeholder">Здесь появится расшифровка.</p>
         </div>
-        <p class="editor-hint">Enter создаёт новый абзац. Назначайте или меняйте говорящего кнопкой рядом с нужным абзацем.</p>
+        <p class="context-hint editor-hint">Редактируйте текст как обычно. Для работы с говорящими откройте одноимённую кнопку. Обычный Enter добавляет перенос, Ctrl+Enter делит текст на два абзаца.</p>
       </section>
     </main>
     <script src="renderer.js"></script>
