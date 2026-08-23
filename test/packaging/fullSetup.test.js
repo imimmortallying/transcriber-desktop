@@ -26,6 +26,10 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
     installerScript.indexOf("!macro customUnInstall"),
     installerScript.indexOf("Function un.onUninstSuccess"),
   );
+  const successfulUninstall = installerScript.slice(
+    installerScript.indexOf("Function un.onUninstSuccess"),
+    installerScript.indexOf("!endif", installerScript.indexOf("Function un.onUninstSuccess")),
+  );
   const fullSetupEstimatedSizeWriter = installerScript.slice(
     installerScript.indexOf("Function writeFullSetupEstimatedSize"),
     installerScript.indexOf("Function checkRuntimeArchiveSpace"),
@@ -122,9 +126,11 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.match(customUninstall, /SetOutPath "\$PLUGINSDIR"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime\.staging"[\s\S]*RMDir \/r "\$uninstallAsrRootDirectory\\Runtime\.previous"/);
   assert.match(installerScript, /IfFileExists "\$uninstallAsrRootDirectory\\Runtime\\NUL" asrCustomUninstallRuntimeRemaining/);
   assert.match(installerScript, /The ASR Runtime could not be completely removed\.[\s\S]*ASR root: \$uninstallAsrRootDirectory[\s\S]*Remaining path: \$uninstallRuntimeRemainingPath/);
-  assert.match(installerScript, /Function un\.onUninstSuccess[\s\S]*SetOutPath "\$PLUGINSDIR"[\s\S]*RMDir "\$uninstallClientsDirectory"[\s\S]*RMDir "\$uninstallAsrRootDirectory"/);
+  assert.match(successfulUninstall, /IfFileExists "\$uninstallClientsDirectory\\NUL" asrUninstallClientsDirectoryExists asrUninstallRootCleanup/);
+  assert.match(successfulUninstall, /asrUninstallClientsDirectoryExists:[\s\S]*\$\{GetFileAttributes\} "\$uninstallClientsDirectory" "DIRECTORY"[\s\S]*\$\{GetFileAttributes\} "\$uninstallClientsDirectory" "REPARSE_POINT"[\s\S]*RMDir \/r "\$uninstallClientsDirectory"[\s\S]*IfFileExists "\$uninstallClientsDirectory\\NUL" asrUninstallClientsDirectoryRetained asrUninstallRootCleanup/);
+  assert.match(successfulUninstall, /asrUninstallClientsDirectoryRetained:[\s\S]*The ASR Clients directory was not removed because it is unsafe, locked, or could not be completely removed/);
+  assert.match(successfulUninstall, /asrUninstallRootCleanup:\s+RMDir "\$uninstallAsrRootDirectory"/);
   assert.doesNotMatch(installerScript, /RMDir \/r "\$uninstallAsrRootDirectory"(?!\\)/);
-  assert.doesNotMatch(installerScript, /RMDir \/r "\$uninstallClientsDirectory"/);
   assert.doesNotMatch(installerScript, /WriteRegStr HKCU "\$\{INSTALL_REGISTRY_KEY\}" InstallLocation/);
   assert.match(installerScript, /!insertmacro MUI_PAGE_DIRECTORY/);
   assert.match(installerScript, /!define MUI_PAGE_CUSTOMFUNCTION_PRE clientInstFilesPre/);

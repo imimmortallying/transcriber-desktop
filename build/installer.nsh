@@ -134,7 +134,25 @@
     StrCmp $uninstallClientsDirectory "" asrUninstallRootCleanupDone
     StrCmp $uninstallAsrRootDirectory "" asrUninstallRootCleanupDone
     SetOutPath "$PLUGINSDIR"
-    RMDir "$uninstallClientsDirectory"
+    IfFileExists "$uninstallClientsDirectory\NUL" asrUninstallClientsDirectoryExists asrUninstallRootCleanup
+
+    asrUninstallClientsDirectoryExists:
+      ClearErrors
+      ${GetFileAttributes} "$uninstallClientsDirectory" "DIRECTORY" $0
+      IfErrors asrUninstallClientsDirectoryRetained
+      StrCmp $0 1 +2
+        Goto asrUninstallClientsDirectoryRetained
+      ClearErrors
+      ${GetFileAttributes} "$uninstallClientsDirectory" "REPARSE_POINT" $0
+      IfErrors asrUninstallClientsDirectoryRetained
+      StrCmp $0 1 asrUninstallClientsDirectoryRetained
+      RMDir /r "$uninstallClientsDirectory"
+      IfFileExists "$uninstallClientsDirectory\NUL" asrUninstallClientsDirectoryRetained asrUninstallRootCleanup
+
+    asrUninstallClientsDirectoryRetained:
+      MessageBox MB_OK|MB_ICONEXCLAMATION "The ASR Clients directory was not removed because it is unsafe, locked, or could not be completely removed.$\r$\nClients directory: $uninstallClientsDirectory$\r$\nClient uninstallation will continue."
+
+    asrUninstallRootCleanup:
     RMDir "$uninstallAsrRootDirectory"
 
     asrUninstallRootCleanupDone:

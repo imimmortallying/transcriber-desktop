@@ -355,7 +355,15 @@ Client health.
   files, command output or `dist/release-<version>`. The ignore policy also
   excludes the optional local `release-signing/` directory and common private
   key/passphrase extensions; release material still belongs outside the
-  working tree whenever possible.
+  working tree whenever possible. A separate plaintext passphrase file is an
+  accepted current local convenience, not a final secret-management design:
+  access to both it and the encrypted key permits signing. **Future hardening
+  (not implemented):** retain encrypted private keys, avoid permanent plaintext
+  passphrase storage, and move to interactive passphrase input or OS-backed
+  secret storage. The current release workflow is intentionally unchanged.
+- **Traceability:** the precise PKCS#8 loading, key-to-pinned-public-key match,
+  Ed25519 signing payloads and application verification call sites are recorded
+  in [the release guide](../release-guide.md#signing-implementation-and-verification).
 - **Verification:** `npm run test:release` verifies early configuration failure,
   version propagation and the allowlisted release directory contents. It does
   not receive production signing material; release-owner validation remains
