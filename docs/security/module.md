@@ -55,6 +55,46 @@ security audit и не утверждает наличие уязвимости 
   а также media drop остаётся обязательной; отдельный негативный Electron
   integration test пока не реализован.
 
+### Original media authorization и local playback
+
+- **Asset:** original audio/video outside run, его absolute path и identity,
+  а также возможность renderer запросить bytes этого файла.
+- **Threat:** renderer или injected content мог бы построить arbitrary `file:`
+  URL, читать другой local file либо сохранить playback state как document edit.
+- **Trust boundary:** run-level `source_media.json` → main validation → opaque
+  `asr-media://` capability → sandboxed renderer `HTMLMediaElement`.
+- **Control:** original media не копируется в run. Client хранит run-level
+  reference с размером и SHA-256 content hash; absolute path, mtime и
+  filesystem/file id не входят в durable identity. При open/re-link main
+  проверяет hash, а protocol request сверяет ephemeral file state и при его
+  изменении повторно проверяет hash. Missing/mismatch
+  fail closed, transcript не блокируется, а re-link допускает только файл с тем
+  же identity. Поэтому перенос файла допускает re-link, а другой media с тем
+  же именем или размером — нет. Renderer получает только random in-memory
+  capability URL, не путь; `asr-media` зарегистрирован secure/standard/streaming,
+  разрешает только GET/HEAD и proxy-ит Range headers в `net.fetch(file:)`.
+  Capability действует в process memory до удаления run, новой authorization
+  того же run или завершения Client и обслуживает все повторные Range requests
+  одного playback lifecycle. CSP разрешает media
+  только из `asr-media:`, navigation и renderer-created windows запрещены.
+  Renderer-owned Media Controller хранит только transient source/playback state;
+  он не вызывает project autosave, transactions или history.
+- **Implementation:** `src/mediaSource.js`, `src/mediaProtocol.js`, `src/main.js`,
+  `src/preload.js`, `src/renderer/mediaController.js` и CSP в
+  `src/renderer/index.html`.
+- **Verification:** `npm run test:media-foundation` проверяет identity states,
+  re-link, opaque URL parsing и forwarding Range header; `npm run
+  test:media-protocol-e2e` реально запрашивает byte range через Electron
+  protocol и сверяет `206` response; `npm run test:timeline-alignment`
+  проверяет source→normalized timeline на generated audio/video fixtures.
+  Required manual validation: actual seek/load/error in dev и packaged Client
+  для representative supported and unsupported codecs и missing/mismatch/re-link.
+  Не реализованы visible player, controls и Transcript Sync; probe `canPlayType`
+  не считается evidence успешного decode. Existing application shell всё ещё
+  загружается через `file://`; этот foundation не заменяет его application-wide
+  custom protocol и не заявляет устранение всех file-origin рисков. Он исключает
+  direct `file:` media loading из нового playback boundary.
+
 ### Пользовательские пути, файлы и lifecycle run
 
 - **Asset:** входные аудио/видео, папка результатов, `segments_asr.json`,

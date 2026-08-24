@@ -97,6 +97,23 @@ Simple transcript и media-assisted review используют один logical
 Таким образом, старая модель Quick → Editor как переход между двумя версиями
 текста не возвращается.
 
+Первый реализованный foundation этого направления — Client-only Media Source
+Foundation. Он не показывает player, controls, timeline или новый layout.
+Каждый новый run получает отдельный durable reference/identity original media,
+но не копию файла: отсутствие или mismatch требуют будущего явного re-link, а
+transcript продолжает работать как прежде. Renderer впоследствии владеет
+`HTMLMediaElement` и transient playback state; main предоставляет только
+проверенную capability URL к source. Playback support не определяет recognition
+support: файл, который current pipeline может распознать, не становится
+неподдерживаемым из-за Chromium codec/container.
+
+Foundation использует одну abstraction для audio и video: metadata сообщает
+`audio` или `video`, а video visibility останется presentation state. HTML media
+capability probe даёт только `probably`/`maybe`/`unsupported`; конечный playback
+результат определяется загрузкой исходного файла в Chromium. Transcript Sync,
+active-text indication и source segment references в editable project ещё не
+реализованы.
+
 Для audio достаточно playback controls. Для video изображение — дополнительное
 доступное представление: оно может быть одновременно видно с transcript и
 скрыто, когда не нужно. Видео существенно в случаях, когда итоговый протокол

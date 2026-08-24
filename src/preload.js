@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("asr", {
   revealResultsDirectory: () => ipcRenderer.invoke("results:reveal-directory"),
   listRuns: () => ipcRenderer.invoke("runs:list"),
   openRun: (segmentsPath) => ipcRenderer.invoke("runs:open", segmentsPath),
+  relinkMediaSource: (segmentsPath, filePath) => ipcRenderer.invoke("media:relink-source", segmentsPath, filePath),
   transcribe: (inputPath) => ipcRenderer.invoke("recognition:run", inputPath),
   revealSupportReport: (reportPath) => ipcRenderer.invoke("support:reveal-report", reportPath),
   copyText: (text) => ipcRenderer.invoke("clipboard:write-text", text),

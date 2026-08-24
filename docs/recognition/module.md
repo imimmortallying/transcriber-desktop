@@ -54,3 +54,19 @@ local/offline Client Update: manifest candidate обязан ей соответ
 run в список не попадает, но его артефакты могут остаться в папке результатов.
 Политика очистки, отображения статуса и диагностики таких runs пока не
 реализована и требует отдельного решения.
+
+## Source media reference и timeline validation
+
+После успешного recognition Client записывает рядом с итоговыми ASR-артефактами
+`source_media.json`. Это run-level metadata исходного файла, а не Runtime или
+Python artifact: Python по-прежнему получает путь лишь для текущего запуска и
+не копирует source в run. Metadata нужна будущему Client playback foundation;
+состав и security boundary определены в [документе расшифровки](../editor/module.md)
+и [security-модели](../security/module.md).
+
+VAD/ASR timestamps измеряются относительно `normalized.wav`. Перед включением
+Transcript Sync их соответствие original media проверяет
+`npm run test:timeline-alignment`: две generated fixture (audio и video) имеют
+signal на известной секунде и проходят тот же `normalize_audio`. Это automated
+evidence для zero-offset path, но реальные VFR/повреждённые/экзотические source
+остаются отдельной packaged validation.

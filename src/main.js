@@ -1,10 +1,18 @@
-const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, net, protocol, shell } = require("electron");
 const { randomUUID } = require("node:crypto");
 const { spawn } = require("node:child_process");
 const { mkdtemp, readFile, readdir, rename, rm, stat, writeFile } = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { MEDIA_FILE_EXTENSIONS, isSupportedMediaPath } = require("./mediaSelection");
+const {
+  createSourceMediaMetadata,
+  isSourceMediaMetadata,
+  validateAuthorizedSource,
+  validateRelinkedSource,
+  validateSourceMedia,
+} = require("./mediaSource");
+const { MEDIA_PROTOCOL_SCHEME, createMediaProtocolHandler } = require("./mediaProtocol");
 const { probeRecognitionRuntime, readSavedSegments, runRecognition } = require("./recognition/runRecognition");
 const { getCurrentRuntime, validateRuntime } = require("./runtime/resolveRuntime");
 const {
@@ -33,6 +41,12 @@ const updateE2eReadyDelayArgument = process.argv.find((argument) => argument.sta
 const updateE2eFailReady = process.argv.includes("--asr-update-e2e-fail-ready");
 let availableOnlineUpdate = null;
 let downloadedOnlineUpdateDirectory = null;
+const mediaAuthorizations = new Map();
+
+protocol.registerSchemesAsPrivileged([{
+  scheme: MEDIA_PROTOCOL_SCHEME,
+  privileges: { secure: true, standard: true, stream: true },
+}]);
 
 async function runInstallationStateMode(argument) {
   const mode = argument.slice("--asr-installation-state=".length);
@@ -137,6 +151,7 @@ async function runUpdateValidationMode() {
   const initialization = await waitForUpdateInitialization();
   await app.whenReady();
   Menu.setApplicationMenu(null);
+  installMediaProtocol();
   await require("./runtime/resolveRuntime").validateRuntime(getCurrentRuntime());
   const window = createWindow();
   await new Promise((resolve) => window.webContents.once("did-finish-load", resolve));
@@ -304,6 +319,9 @@ function createWindow() {
     },
   });
 
+  window.webContents.on("will-navigate", (event) => event.preventDefault());
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+
   let closeApproved = false;
   let closeCheckInProgress = false;
   let closeConfirmationVisible = false;
@@ -380,6 +398,97 @@ function getRunDirectory(segmentsPath) {
 
 function getEditsPath(segmentsPath) {
   return path.join(getRunDirectory(segmentsPath), "segments_asr.edits.json");
+}
+
+function getSourceMediaMetadataPath(segmentsPath) {
+  return path.join(getRunDirectory(segmentsPath), "source_media.json");
+}
+
+async function readSourceMediaMetadata(segmentsPath) {
+  const metadataPath = getSourceMediaMetadataPath(segmentsPath);
+  let rawMetadata;
+  try {
+    rawMetadata = await readFile(metadataPath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+
+  try {
+    const metadata = JSON.parse(rawMetadata);
+    return isSourceMediaMetadata(metadata) ? metadata : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeSourceMediaMetadata(segmentsPath, metadata) {
+  if (!isSourceMediaMetadata(metadata)) {
+    throw new Error("Не удалось сохранить reference исходного media-файла.");
+  }
+
+  const metadataPath = getSourceMediaMetadataPath(segmentsPath);
+  const temporaryMetadataPath = `${metadataPath}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryMetadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+    await rename(temporaryMetadataPath, metadataPath);
+  } finally {
+    await rm(temporaryMetadataPath, { force: true }).catch(() => {});
+  }
+}
+
+async function authorizeMediaSource(segmentsPath, metadata) {
+  const validation = await validateSourceMedia(metadata);
+  if (validation.status !== "available") {
+    return { status: validation.status, sourceKind: metadata?.sourceKind || "unknown" };
+  }
+
+  const resolvedSegmentsPath = path.resolve(segmentsPath);
+  for (const [token, authorization] of mediaAuthorizations) {
+    if (authorization.segmentsPath === resolvedSegmentsPath) {
+      mediaAuthorizations.delete(token);
+    }
+  }
+  const token = randomUUID();
+  mediaAuthorizations.set(token, {
+    segmentsPath: resolvedSegmentsPath,
+    metadata,
+    fileState: validation.fileState,
+  });
+  return {
+    status: "available",
+    sourceKind: validation.sourceKind,
+    mimeType: metadata.sourceMimeType,
+    url: `${MEDIA_PROTOCOL_SCHEME}://${token}/source`,
+  };
+}
+
+async function getAuthorizedRunMediaSource(segmentsPath) {
+  const metadata = await readSourceMediaMetadata(segmentsPath);
+  if (!metadata) {
+    return { status: "unavailable", sourceKind: "unknown" };
+  }
+  return authorizeMediaSource(segmentsPath, metadata);
+}
+
+function installMediaProtocol() {
+  protocol.handle(MEDIA_PROTOCOL_SCHEME, createMediaProtocolHandler({
+    fetchFile: net.fetch,
+    resolveAuthorization: async (token) => {
+      const authorization = mediaAuthorizations.get(token);
+      if (!authorization) {
+        return null;
+      }
+      const validation = await validateAuthorizedSource(authorization.metadata, authorization.fileState);
+      if (validation.status !== "available") {
+        return null;
+      }
+      authorization.fileState = validation.fileState;
+      return validation;
+    },
+  }));
 }
 
 async function getPipelineDataDirectory() {
@@ -708,7 +817,29 @@ ipcMain.handle("runs:open", async (_event, segmentsPath) => {
     date: metadata.date,
     segments: await readSavedSegments(segmentsPath),
     project: await readProjectEdits(segmentsPath),
+    mediaSource: await getAuthorizedRunMediaSource(segmentsPath),
   };
+});
+
+ipcMain.handle("media:relink-source", async (_event, segmentsPath, inputPath) => {
+  await getExistingManagedRunDirectory(segmentsPath);
+  const metadata = await readSourceMediaMetadata(segmentsPath);
+  if (!metadata) {
+    return { status: "unavailable", sourceKind: "unknown" };
+  }
+
+  const validation = await validateRelinkedSource(metadata, inputPath);
+  if (validation.status !== "available") {
+    return { status: validation.status, sourceKind: metadata.sourceKind };
+  }
+
+  const relinkedMetadata = {
+    ...metadata,
+    sourcePath: validation.filePath,
+    sourceName: path.basename(validation.filePath),
+  };
+  await writeSourceMediaMetadata(segmentsPath, relinkedMetadata);
+  return authorizeMediaSource(segmentsPath, relinkedMetadata);
 });
 
 ipcMain.handle("project:save", async (_event, segmentsPath, project) => {
@@ -777,6 +908,12 @@ ipcMain.handle("run:delete", async (_event, segmentsPath) => {
     throw new Error(`Не удалось удалить папку прогона: ${error.message}`);
   }
 
+  for (const [token, authorization] of mediaAuthorizations) {
+    if (authorization.segmentsPath === path.resolve(segmentsPath)) {
+      mediaAuthorizations.delete(token);
+    }
+  }
+
   return true;
 });
 
@@ -786,10 +923,7 @@ ipcMain.handle("recognition:run", async (event, inputPath) => {
     if (typeof inputPath !== "string") {
       throw new Error("Не выбран файл для распознавания.");
     }
-    const fileInfo = await stat(inputPath);
-    if (!fileInfo.isFile()) {
-      throw new Error("Выбранный путь не является файлом.");
-    }
+    const sourceMetadata = await createSourceMediaMetadata(inputPath);
     const dataDirectory = await getResultsDataDirectory();
     recognitionStarted = true;
     const result = await runRecognition(inputPath, {
@@ -798,6 +932,11 @@ ipcMain.handle("recognition:run", async (event, inputPath) => {
         event.sender.send("recognition:progress", status);
       },
     });
+    const sourceValidation = await validateSourceMedia(sourceMetadata);
+    if (sourceValidation.status !== "available") {
+      throw new Error("Исходный media-файл изменился во время распознавания.");
+    }
+    await writeSourceMediaMetadata(result.segmentsPath, sourceMetadata);
     return { ok: true, result };
   } catch (error) {
     let supportReport = null;
@@ -974,6 +1113,7 @@ if (ipcSpikeClientBehavior) {
 } else {
   app.whenReady().then(() => {
     Menu.setApplicationMenu(null);
+    installMediaProtocol();
     createWindow();
 
     app.on("activate", () => {

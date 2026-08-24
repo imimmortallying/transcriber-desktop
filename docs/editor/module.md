@@ -42,8 +42,13 @@ ownership focus dialog.
 `data/pipeline/<runId>/`; после смены корня он хранится в
 `<выбранная папка>/<runId>/`. Старые прогоны не переносятся и становятся снова
 доступны через список только после возврата прежней папки. Рядом с
-`segments_asr.json` лежат `normalized.wav`, `vad_segments.json` и
-`transcript.txt`, а после сохранения проекта — `segments_asr.edits.json`.
+`segments_asr.json` лежат `normalized.wav`, `vad_segments.json`, `transcript.txt`
+и run-level `source_media.json`; после сохранения проекта —
+`segments_asr.edits.json`. `source_media.json` хранит absolute local reference,
+вид source и path-independent identity (`size` и SHA-256 content hash)
+исходного файла, но не копирует его в run и не является document edit. При
+отсутствующем или не совпавшем source transcript продолжает открываться и
+редактироваться; будущий media review потребует явного re-link с тем же identity.
 Название исходника и дата в списке извлекаются из формата runId
 `<unix-время>-<имя-исходника>-<uuid>`; при нестандартном runId отображаются его
 значение и дата изменения папки. У каждой записи списка есть действия «Открыть
@@ -107,7 +112,11 @@ document state, пользовательские правки, autosave/persiste
 или диапазону, но не дают word-level timestamp precision. После пользовательской
 правки linkage может сохраняться только в пределах, которые допускает эта
 существующая модель. Новые media controls, seek, active-text highlighting и
-layout пока не реализованы и не заданы этим документом.
+layout пока не реализованы и не заданы этим документом. Перед Transcript Sync
+проверяется, что timeline original audio/video и `normalized.wav` совпадают:
+`npm run test:timeline-alignment` синтезирует audio и video с известным сигналом
+на `t=1.0` и пропускает их через production normalization path. Этот тест не
+доказывает playback всех containers/codecs и не вводит word-level timing.
 
 ## Проект правок
 
