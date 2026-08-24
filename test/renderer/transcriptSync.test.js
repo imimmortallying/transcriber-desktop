@@ -114,6 +114,21 @@ test("activeAt uses half-open segment ranges, so a shared boundary selects only 
   assert.deepEqual(sync.activeAt(1).map(({ paragraph: active }) => active.id), [2]);
 });
 
+test("untouched baseline transcript exposes its current exact segment range without a split", () => {
+  const [baselineParagraph] = buildBaselineParagraphs(baseline);
+  const untouched = { ...baselineParagraph, id: 1 };
+  const sync = createTranscriptSync({ baselineSegments: baseline, getParagraphs: () => [untouched] });
+
+  const [active] = sync.activeAt(3.5);
+  assert.equal(active.paragraph.id, untouched.id);
+  assert.deepEqual(active.timedRanges.find((range) => range.start === 3), {
+    sourceSegmentRef: { kind: "baseline-segment", index: 1 },
+    start: 3,
+    end: 4,
+  });
+  assert.deepEqual(sync.activeAt(2), []);
+});
+
 test("missing, invalid and out-of-range refs resolve fail-soft without an invented seek time", () => {
   const unresolved = paragraph(1, "нет provenance", [{
     from: 0,

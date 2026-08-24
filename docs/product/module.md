@@ -114,8 +114,24 @@ capability probe даёт только `probably`/`maybe`/`unsupported`; кон�
 реализованный foundation — UI-independent Transcript Sync: editable project
 хранит `sourceSegmentRefs` к immutable ASR baseline, а pure contract разрешает
 `media time → все active transcript parts` и `replica → начало первого source
-segment`. Это segment-level provenance, не word-level highlighting; visible
-player, indication и controls по-прежнему отсутствуют.
+segment`. Это segment-level provenance, не word-level highlighting.
+
+Реализован Media Review v1 как opt-in слой над теми же foundation. Обычный
+editor не меняется, пока пользователь явно не включает «Проверку по записи».
+Тогда transient `MediaReviewSession` связывает renderer-owned
+`MediaController`, `TranscriptSync`, UI-independent `SeekResolver` и отдельный
+`HighlightPolicy`. Session не попадает в autosave или history: current time,
+play/pause, review enabled, active indication и video visibility исчезают при
+закрытии review или смене документа. Session создаётся лишь по explicit enable;
+при document switch она останавливает playback и освобождает renderer source,
+поэтому previous run не может остаться в новом документе. Text→media сейчас
+означает intent от replica к началу первого usable referenced baseline segment; future strategies
+(part/word/pre-roll) заменяют resolver, не editor или controller. Media→text
+использует все `activeAt` parts и допускает несколько спокойных indication
+одновременно. Для неразделённого baseline paragraph adapter показывает active
+exact segment range, не меняя contenteditable text и не заявляя word precision.
+Minimal player/video presentation — временный UI, без
+autoscroll, follow mode, word highlighting или закреплённого layout.
 
 Для audio достаточно playback controls. Для video изображение — дополнительное
 доступное представление: оно может быть одновременно видно с transcript и
@@ -192,9 +208,8 @@ Setup rather than a `.asrupdate`.
 - speaker inheritance при split;
 - быстрые keyboard actions для назначения говорящего;
 - будет ли media-assisted review отдельным экраном, layout-state или workspace;
-- название и действие перехода к media-assisted review, включая возможную кнопку
-  «Сверить с записью»;
-- click-on-text seek semantics;
+- окончательное название и placement перехода к media-assisted review;
+- next text-navigation strategy beyond current replica→first segment intent;
 - autoplay, autoscroll и follow-playback;
 - конкретная навигация, media/transcript layout и расположение media;
 - размеры и режимы video;

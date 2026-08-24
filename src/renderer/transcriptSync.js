@@ -231,23 +231,25 @@
     return ranges;
   }
 
-  function createTranscriptSync({ baselineSegments, getParagraphs }) {
+  function createTranscriptSync({ baselineSegments, getBaselineSegments, getParagraphs }) {
     const readParagraphs = typeof getParagraphs === "function" ? getParagraphs : () => [];
-    const readBaseline = Array.isArray(baselineSegments) ? baselineSegments : [];
+    const readBaseline = typeof getBaselineSegments === "function"
+      ? getBaselineSegments
+      : () => Array.isArray(baselineSegments) ? baselineSegments : [];
     return {
       activeAt(time) {
         if (!Number.isFinite(time)) {
           return [];
         }
         return readParagraphs()
-          .map((paragraph) => ({ paragraph, timedRanges: resolveTimedRanges(paragraph, readBaseline) }))
+          .map((paragraph) => ({ paragraph, timedRanges: resolveTimedRanges(paragraph, readBaseline()) }))
           .filter(({ timedRanges }) => timedRanges.some((range) => time >= range.start && time < range.end));
       },
       seekTarget(paragraph) {
-        return resolveTimedRanges(paragraph, readBaseline)[0]?.start ?? null;
+        return resolveTimedRanges(paragraph, readBaseline())[0]?.start ?? null;
       },
       timedRanges(paragraph) {
-        return resolveTimedRanges(paragraph, readBaseline);
+        return resolveTimedRanges(paragraph, readBaseline());
       },
     };
   }

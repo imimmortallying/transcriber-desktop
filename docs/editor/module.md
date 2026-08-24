@@ -99,18 +99,17 @@ ref; при разрыве на границе refs расходятся ест�
 Таймкод показан в компактной колонке рядом со своим абзацем, чтобы оставаться
 частью той же реплики и не создавать широкого пустого поля.
 
-## Будущее направление: media-assisted review
+## Media-assisted review v1
 
 Следующее утверждённое продуктовое направление — связать исходное media и этот
 документ как два представления одного рабочего материала; его границы и
 отложенный UX определены в [продуктовом документе](../product/module.md).
 Progressive disclosure не создаёт второй документ или отдельный lifecycle:
-простой transcript и будущий media-assisted review используют те же logical
-document state, пользовательские правки, autosave/persistence lifecycle и
-исходный ASR baseline. Простой transcript остаётся доступным для обычной
-текстовой правки; media-specific capabilities раскрываются только при выборе
-тщательной проверки по источнику. Форма этого перехода и представления пока не
-определена.
+простой transcript и media-assisted review используют те же logical document
+state, пользовательские правки, autosave/persistence lifecycle и исходный ASR
+baseline. Проверка по источнику по умолчанию выключена: только явное действие
+открывает её временный минимальный интерфейс и authorizes playback source. При
+выключенной проверке нет player, playback-driven indication или text→media action.
 `TranscriptSync` — чистый слой без DOM/player: он разрешает `sourceSegmentRef`
 в exact ranges baseline, возвращает все active transcript parts для времени и
 даёт seek target как начало первого referenced segment. Несколько частей после
@@ -118,9 +117,28 @@ split могут быть active одновременно; merge сохраня�
 VAD gaps не становятся одним точным continuous interval. `activeAt` использует
 half-open boundary `[start, end)`, поэтому общая граница соседних segments не
 делает оба active. Paragraph без usable refs не получает artificial range или
-seek target; invalid/out-of-range ref отбрасывается fail-soft. Новые media controls,
-seek UI, active-text highlighting и layout пока не реализованы и не заданы этим
-документом. Перед включением Sync проверено, что timeline original audio/video
+seek target; invalid/out-of-range ref отбрасывается fail-soft.
+`MediaReviewSession` — transient orchestration layer над renderer-owned
+`MediaController`, pure `TranscriptSync`, заменяемыми `SeekResolver` и
+`HighlightPolicy`. Она создаётся только по explicit enable и уничтожается при
+hide review, смене run или нового документа: playback останавливается, source
+отвязывается, player и active indication исчезают. Source текущего run остаётся
+доступен для следующего explicit enable; missing/mismatch получает re-link только
+внутри enabled review. Session не входит в project, autosave или Editor History.
+Текущий resolver строит intent от replica к началу первого usable baseline
+segment; UI передаёт intent session, а не вызывает MediaController напрямую.
+Highlight policy представляет все active parts, поэтому несколько replica могут
+быть отмечены одновременно. Для untouched большого editable paragraph adapter
+показывает текущий exact ASR segment range рядом с спокойной active indication,
+не меняя contenteditable text DOM: связь символов внутри segment остаётся
+approximate. Audio воспроизводится без изображения; video использует тот же
+contract и может временно показывать/скрывать изображение. Seekbar передаёт
+clamped target только в текущую session → controller → `HTMLMediaElement.currentTime`;
+он не reloads source и сохраняет playing/paused state. Во время drag transient
+scrubbing state удерживает thumb от playback `timeupdate`, после seek UI снова
+следует current time. Нет autoscroll,
+follow playback, word highlighting или layout contract. Перед
+включением Sync проверено, что timeline original audio/video
 и `normalized.wav` совпадают:
 `npm run test:timeline-alignment` синтезирует audio и video с известным сигналом
 на `t=1.0` и пропускает их через production normalization path. Этот тест не

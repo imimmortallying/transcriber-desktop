@@ -9,6 +9,20 @@
   function createMediaController({ documentRef = document } = {}) {
     let mediaElement = null;
     let source = null;
+    const listeners = new Set();
+
+    function emit() {
+      const value = snapshot();
+      for (const listener of listeners) {
+        listener(value);
+      }
+    }
+
+    function observeMediaElement(element) {
+      ["durationchange", "ended", "error", "loadedmetadata", "pause", "play", "seeked", "seeking", "timeupdate"].forEach((eventName) => {
+        element.addEventListener(eventName, emit);
+      });
+    }
 
     function ensureMediaElement(nextSource) {
       const tagName = nextSource.sourceKind === "video" ? "video" : "audio";
@@ -18,6 +32,7 @@
       mediaElement?.pause();
       mediaElement = documentRef.createElement(tagName);
       mediaElement.preload = "metadata";
+      observeMediaElement(mediaElement);
       return mediaElement;
     }
 
@@ -25,7 +40,8 @@
       return {
         currentTime: Number.isFinite(mediaElement?.currentTime) ? mediaElement.currentTime : 0,
         duration: Number.isFinite(mediaElement?.duration) ? mediaElement.duration : null,
-        state: mediaElement?.ended ? "ended" : (mediaElement?.paused ? "paused" : "playing"),
+        hasError: Boolean(mediaElement?.error),
+        state: !mediaElement ? "idle" : (mediaElement.ended ? "ended" : (mediaElement.paused ? "paused" : "playing")),
         sourceKind: source?.sourceKind || "unknown",
       };
     }
@@ -44,12 +60,14 @@
         mediaElement?.pause();
         mediaElement?.removeAttribute("src");
         mediaElement?.load();
+        emit();
         return snapshot();
       }
       source = { ...nextSource };
       const element = ensureMediaElement(source);
       element.src = source.url;
       element.load();
+      emit();
       return snapshot();
     }
 
@@ -57,15 +75,33 @@
       getElement: () => mediaElement,
       getSnapshot: snapshot,
       load,
-      pause: () => mediaElement?.pause(),
-      play: () => mediaElement ? mediaElement.play() : Promise.reject(new Error("Media source is not loaded.")),
+      pause: () => {
+        mediaElement?.pause();
+        emit();
+      },
+      play: () => mediaElement
+        ? mediaElement.play().then(() => {
+          emit();
+        })
+        : Promise.reject(new Error("Media source is not loaded.")),
       probe,
       seek: (seconds) => {
         if (!mediaElement || !Number.isFinite(seconds)) {
           return snapshot();
         }
-        mediaElement.currentTime = Math.max(0, seconds);
+        const duration = Number.isFinite(mediaElement.duration) && mediaElement.duration >= 0
+          ? mediaElement.duration
+          : null;
+        mediaElement.currentTime = duration === null
+          ? Math.max(0, seconds)
+          : Math.min(duration, Math.max(0, seconds));
+        emit();
         return snapshot();
+      },
+      subscribe(listener) {
+        listeners.add(listener);
+        listener(snapshot());
+        return () => listeners.delete(listener);
       },
     };
   }

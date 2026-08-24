@@ -51,10 +51,10 @@ Python-пайплайна — в `docs/recognition/module.md`; правила и
 и локальный токен пока остаются в Python-пайплайне. Зависимости диаризации не
 входят в `requirements-app.txt`, но `diarization.py` и команда `diarize` пока
 попадают в packaged-ресурсы вместе со всем каталогом `pipeline/asr_pipeline`.
-Видео- и аудиоплеера, перемотки по абзацу и автотемплейтов сейчас нет.
-Следующее утверждённое направление — media-assisted transcript review; оно ещё
-не реализовано и описано вместе с открытыми UX-вопросами в
-`docs/product/module.md`.
+Media Review v1 доступен только по явному действию для текущей расшифровки:
+он даёт playback и segment-level indication, не меняя autosave/history.
+Автопрокрутка, word-level highlighting, final layout и другие interaction
+patterns остаются открытыми вопросами в `docs/product/module.md`.
 
 ## Устройство
 

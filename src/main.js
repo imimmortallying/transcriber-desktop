@@ -937,7 +937,11 @@ ipcMain.handle("recognition:run", async (event, inputPath) => {
       throw new Error("Исходный media-файл изменился во время распознавания.");
     }
     await writeSourceMediaMetadata(result.segmentsPath, sourceMetadata);
-    return { ok: true, result };
+    return {
+      ok: true,
+      result,
+      mediaSource: await getAuthorizedRunMediaSource(result.segmentsPath),
+    };
   } catch (error) {
     let supportReport = null;
     try {

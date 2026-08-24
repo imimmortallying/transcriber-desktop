@@ -104,6 +104,7 @@
             <summary>Ещё</summary>
             <div class="editor-more-actions">
               <button id="open-speakers" class="secondary-button" type="button" aria-haspopup="dialog" aria-controls="editor-toolbar">Управлять говорящими</button>
+              <button id="toggle-media-review" class="secondary-button" type="button" aria-pressed="false">Проверка по записи</button>
               <button id="open-editor-actions" class="secondary-button" type="button" aria-haspopup="dialog" aria-controls="editor-actions-dialog">Управление документом</button>
             </div>
           </details>
@@ -148,6 +149,21 @@
             </div>
           </div>
         </dialog>
+        <section id="media-review" class="media-review" aria-label="Проверка по записи" hidden>
+          <div class="media-review-header">
+            <strong>Проверка по записи</strong>
+            <button id="disable-media-review" class="secondary-button" type="button">Скрыть</button>
+          </div>
+          <p id="media-review-status" class="hint" aria-live="polite"></p>
+          <div id="media-review-controls" class="media-review-controls" hidden>
+            <button id="media-review-play" class="secondary-button" type="button">Воспроизвести</button>
+            <output id="media-review-time" class="media-review-time">00:00 / --:--</output>
+            <input id="media-review-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="Позиция воспроизведения" />
+            <button id="toggle-media-video" class="secondary-button" type="button" hidden>Скрыть видео</button>
+          </div>
+          <div id="media-review-presentation" class="media-review-presentation" hidden></div>
+          <button id="relink-media-source" class="secondary-button" type="button" hidden>Указать исходный файл</button>
+        </section>
         <div id="editor" class="editor" aria-live="polite">
           <p class="editor-placeholder">Здесь появится расшифровка.</p>
         </div>
@@ -160,6 +176,7 @@
     <script src="editorTyping.js"></script>
     <script src="mediaController.js"></script>
     <script src="transcriptSync.js"></script>
+    <script src="mediaReviewSession.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

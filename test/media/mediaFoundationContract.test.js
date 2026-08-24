@@ -27,5 +27,7 @@ test("main owns media authorization while renderer only receives an opaque capab
   assert.match(preload, /relinkMediaSource: \(segmentsPath, filePath\) => ipcRenderer\.invoke\("media:relink-source", segmentsPath, filePath\)/);
   assert.match(index, /Content-Security-Policy" content="[^"]*media-src asr-media:/);
   assert.doesNotMatch(index, /media-src 'self'/);
-  assert.doesNotMatch(renderer, /relinkMediaSource|createMediaController/);
+  assert.match(renderer, /createMediaController\(\)/);
+  assert.match(renderer, /relinkMediaSource\(sourceSegmentsPath, filePath\)/);
+  assert.doesNotMatch(renderer, /asr-media:\/\//);
 });

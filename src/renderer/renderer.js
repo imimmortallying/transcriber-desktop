@@ -8,6 +8,7 @@ const mediaDropHint = document.querySelector("#media-drop-hint");
 const documentView = document.querySelector("#document-view");
 const documentMore = document.querySelector("#document-more");
 const openSpeakersButton = document.querySelector("#open-speakers");
+const toggleMediaReviewButton = document.querySelector("#toggle-media-review");
 const openEditorActionsButton = document.querySelector("#open-editor-actions");
 const advancedPanel = document.querySelector("#advanced-panel");
 const closeSettingsButton = document.querySelector("#close-settings");
@@ -53,6 +54,16 @@ const recognitionProgress = document.querySelector("#recognition-progress");
 const recognitionProgressStage = document.querySelector("#recognition-progress-stage");
 const recognitionElapsed = document.querySelector("#recognition-elapsed");
 const editor = document.querySelector("#editor");
+const mediaReview = document.querySelector("#media-review");
+const disableMediaReviewButton = document.querySelector("#disable-media-review");
+const mediaReviewStatus = document.querySelector("#media-review-status");
+const mediaReviewControls = document.querySelector("#media-review-controls");
+const mediaReviewPlayButton = document.querySelector("#media-review-play");
+const mediaReviewTime = document.querySelector("#media-review-time");
+const mediaReviewSeek = document.querySelector("#media-review-seek");
+const mediaReviewPresentation = document.querySelector("#media-review-presentation");
+const toggleMediaVideoButton = document.querySelector("#toggle-media-video");
+const relinkMediaSourceButton = document.querySelector("#relink-media-source");
 const clientVersion = document.querySelector("#client-version");
 const devEditorTrace = document.querySelector("#dev-editor-trace");
 const captureDevEditorTraceButton = document.querySelector("#capture-dev-editor-trace");
@@ -78,6 +89,11 @@ const ICON_PATHS = {
 let selectedFile = null;
 let mediaDragDepth = 0;
 let sourceSegmentsPath = null;
+let sourceMedia = null;
+let mediaReviewOpen = false;
+let mediaReviewScrubbing = false;
+let mediaReviewScrubTarget = null;
+let mediaReviewPendingSeekTarget = null;
 let isRunning = false;
 let isProjectDirty = false;
 let hasProjectEdits = false;
@@ -123,6 +139,13 @@ const {
   sanitizeTiming,
   splitTiming: splitTranscriptTiming,
 } = window.TranscriptSync;
+const transcriptSync = window.TranscriptSync.createTranscriptSync({
+  getBaselineSegments: () => recognizedSegments,
+  getParagraphs: () => paragraphs,
+});
+let mediaController = null;
+let mediaReviewSession = null;
+let mediaReviewSnapshot = createEmptyMediaReviewSnapshot();
 
 async function showClientVersion() {
   try {
@@ -760,6 +783,7 @@ function setRunning(running) {
   openSavedButton.disabled = running;
   toggleSettingsButton.disabled = running;
   openSpeakersButton.disabled = running || !sourceSegmentsPath || isShowingRecognized;
+  toggleMediaReviewButton.disabled = running || !sourceSegmentsPath || isShowingRecognized;
   selectResultsDirectoryButton.disabled = running;
   revealResultsDirectoryButton.disabled = running || !resultsDirectoryPath;
   const hasCleanText = Boolean(getCleanText(visibleDocument.paragraphs, visibleDocument.speakers));
@@ -784,6 +808,7 @@ function setRunning(running) {
   });
   renderUpdateControls();
   updateActiveSavedRun();
+  renderMediaReview();
 }
 
 function clearSupportReport() {
@@ -1042,6 +1067,7 @@ function resetDeletedRunState() {
   clearSaveStatus();
   selectedFile = null;
   sourceSegmentsPath = null;
+  resetMediaReviewForDocument();
   isSavedRunOpen = false;
   clearRecognizedSource();
   resetEditorState();
@@ -1055,6 +1081,146 @@ function resetDeletedRunState() {
   closeDialog(editorActionsDialog);
   documentView.hidden = true;
   renderEditor();
+}
+
+function createEmptyMediaReviewSnapshot() {
+  return {
+    activeIndications: [],
+    activeParagraphIds: new Set(),
+    activeStates: [],
+    enabled: false,
+    media: { currentTime: 0, duration: null, hasError: false, sourceKind: "unknown", state: "idle" },
+    playbackCapability: "unavailable",
+    source: null,
+    videoVisible: false,
+  };
+}
+
+function ensureMediaReviewSession() {
+  if (mediaReviewSession) {
+    return mediaReviewSession;
+  }
+  mediaController = window.MediaController.createMediaController();
+  const session = window.MediaReviewSession.createMediaReviewSession({ mediaController, transcriptSync });
+  mediaReviewSession = session;
+  session.subscribe((snapshot) => {
+    if (mediaReviewSession !== session) {
+      return;
+    }
+    mediaReviewSnapshot = snapshot;
+    renderMediaReview();
+    applyMediaReviewHighlight();
+  });
+  session.setSource(sourceMedia);
+  return session;
+}
+
+function disposeMediaReviewSession() {
+  mediaReviewOpen = false;
+  mediaReviewScrubbing = false;
+  mediaReviewScrubTarget = null;
+  mediaReviewPendingSeekTarget = null;
+  if (mediaReviewSession) {
+    mediaReviewSession.dispose();
+  }
+  mediaReviewSession = null;
+  mediaController = null;
+  mediaReviewSnapshot = createEmptyMediaReviewSnapshot();
+}
+
+function resetMediaReviewForDocument() {
+  disposeMediaReviewSession();
+  sourceMedia = null;
+}
+
+function setMediaReviewSource(nextSource) {
+  sourceMedia = nextSource || null;
+  mediaReviewSession?.setSource(sourceMedia);
+}
+
+function applyMediaReviewHighlight() {
+  const activeIndications = new Map((mediaReviewSnapshot.enabled ? mediaReviewSnapshot.activeIndications : [])
+    .map((indication) => [indication.paragraphId, indication]));
+  editor.querySelectorAll(".document-paragraph").forEach((paragraphElement) => {
+    const paragraphId = Number(paragraphElement.querySelector(".document-text")?.dataset.paragraphId);
+    const indication = activeIndications.get(paragraphId);
+    paragraphElement.classList.toggle("is-media-review-active", Boolean(indication));
+    if (indication) {
+      paragraphElement.dataset.mediaReviewActiveRange = `[${formatTimecode(indication.start)}–${formatTimecode(indication.end)}]`;
+    } else {
+      delete paragraphElement.dataset.mediaReviewActiveRange;
+    }
+  });
+}
+
+function renderMediaReview() {
+  const snapshot = mediaReviewSnapshot;
+  const source = sourceMedia || snapshot.source;
+  const available = source?.status === "available";
+  const reviewAvailable = snapshot.enabled && available;
+  const playbackError = Boolean(snapshot.media.hasError);
+  mediaReview.hidden = !mediaReviewOpen;
+  toggleMediaReviewButton.setAttribute("aria-pressed", String(mediaReviewOpen));
+  toggleMediaReviewButton.textContent = mediaReviewOpen ? "Закрыть проверку по записи" : "Проверка по записи";
+  mediaReviewControls.hidden = !reviewAvailable;
+  relinkMediaSourceButton.hidden = !mediaReviewOpen || (available && !playbackError);
+  mediaReviewPresentation.hidden = true;
+
+  if (!mediaReviewOpen) {
+    mediaReviewPresentation.replaceChildren();
+    return;
+  }
+  if (!reviewAvailable && mediaReviewPresentation.childElementCount) {
+    mediaReviewPresentation.replaceChildren();
+  }
+  if (!available) {
+    mediaReviewStatus.textContent = source?.status === "mismatch"
+      ? "Исходный файл не совпадает с распознанной записью. Укажите исходный файл повторно."
+      : "Исходный файл недоступен. Укажите исходный файл повторно.";
+    return;
+  }
+  if (!snapshot.enabled) {
+    mediaReviewStatus.textContent = snapshot.playbackCapability === "unsupported"
+      ? "Этот контейнер или кодек не воспроизводится в Client. Расшифровка остаётся доступной."
+      : "Не удалось включить воспроизведение исходного файла.";
+    return;
+  }
+
+  const { media } = snapshot;
+  mediaReviewStatus.textContent = playbackError
+    ? "Не удалось загрузить исходную запись. Можно указать файл повторно; текст останется доступен."
+    : (media.sourceKind === "video"
+    ? "Видео и текст остаются независимыми представлениями одного документа."
+    : "Воспроизведение доступно только для проверки текущей расшифровки.");
+  mediaReviewPlayButton.textContent = media.state === "playing" ? "Пауза" : "Воспроизвести";
+  mediaReviewPlayButton.disabled = isRunning;
+  const hasUsableDuration = Number.isFinite(media.duration) && media.duration > 0;
+  if (mediaReviewPendingSeekTarget !== null
+    && (Math.abs(media.currentTime - mediaReviewPendingSeekTarget) < 0.01 || playbackError)) {
+    mediaReviewPendingSeekTarget = null;
+  }
+  const heldSeekTarget = mediaReviewScrubbing ? mediaReviewScrubTarget : mediaReviewPendingSeekTarget;
+  const displayedTime = heldSeekTarget ?? media.currentTime;
+  mediaReviewTime.textContent = `${formatTimecode(displayedTime)} / ${formatTimecode(media.duration)}`;
+  mediaReviewSeek.max = String(hasUsableDuration ? media.duration : 0);
+  if (heldSeekTarget === null) {
+    mediaReviewSeek.value = String(Math.min(media.currentTime, media.duration || 0));
+  }
+  mediaReviewSeek.disabled = isRunning || !hasUsableDuration;
+  toggleMediaVideoButton.hidden = media.sourceKind !== "video";
+  toggleMediaVideoButton.disabled = isRunning;
+  toggleMediaVideoButton.textContent = snapshot.videoVisible ? "Скрыть видео" : "Показать видео";
+  if (media.sourceKind === "video" && snapshot.videoVisible) {
+    const element = mediaReviewSession?.getElement();
+    if (element) {
+      mediaReviewPresentation.hidden = false;
+      if (!mediaReviewPresentation.contains(element)) {
+        mediaReviewPresentation.replaceChildren(element);
+      }
+    }
+  } else if (mediaReviewPresentation.childElementCount) {
+    mediaReviewPresentation.replaceChildren();
+  }
 }
 
 function formatSourceName(filePath) {
@@ -1160,6 +1326,7 @@ function applyOpenedSavedRun(result) {
   clearAutosaveTimer();
   clearEditorHistory();
   clearSaveStatus();
+  resetMediaReviewForDocument();
   selectedFile = null;
   sourceSegmentsPath = null;
   clearRecognizedSource();
@@ -1187,6 +1354,7 @@ function applyOpenedSavedRun(result) {
     }
   }
   sourceSegmentsPath = result.sourcePath;
+  setMediaReviewSource(result.mediaSource);
   isSavedRunOpen = true;
   setSavedRunActionsVisible(true);
   isProjectDirty = Boolean(provenanceMigration);
@@ -1715,6 +1883,7 @@ function renderEditor() {
     placeholder.textContent = "Здесь появится расшифровка.";
     editor.append(placeholder);
     setRunning(isRunning);
+    applyMediaReviewHighlight();
     traceEditorSnapshot("render-editor", { empty: true });
     return;
   }
@@ -1789,6 +1958,20 @@ function renderEditor() {
         }
         paragraphElement.append(popover);
       }
+
+      if (mediaReviewSnapshot.enabled && mediaReviewSession?.canSeek(paragraph)) {
+        const seekToMediaButton = document.createElement("button");
+        seekToMediaButton.className = "paragraph-media-seek secondary-button";
+        seekToMediaButton.type = "button";
+        seekToMediaButton.disabled = isRunning;
+        seekToMediaButton.textContent = "К записи";
+        seekToMediaButton.addEventListener("click", () => {
+          if (!mediaReviewSession?.requestSeek(paragraph)) {
+            showToast("Для этой реплики нет связи с записью.");
+          }
+        });
+        content.append(seekToMediaButton);
+      }
     }
     content.append(textElement);
     paragraphElement.append(timecode, content);
@@ -1796,6 +1979,7 @@ function renderEditor() {
   }
 
   setRunning(isRunning);
+  applyMediaReviewHighlight();
   traceEditorSnapshot("render-editor", { empty: false });
 }
 
@@ -1926,6 +2110,7 @@ async function selectMediaFile(filePath) {
   clearEditorHistory();
   clearSaveStatus();
   closeDialog(editorToolbar);
+  resetMediaReviewForDocument();
   selectedFile = filePath;
   sourceSegmentsPath = null;
   isSavedRunOpen = false;
@@ -2038,6 +2223,7 @@ transcribeButton.addEventListener("click", async () => {
   clearEditorHistory();
   clearSaveStatus();
   closeDialog(editorToolbar);
+  resetMediaReviewForDocument();
   sourceSegmentsPath = null;
   isSavedRunOpen = false;
   setSavedRunActionsVisible(false);
@@ -2063,6 +2249,7 @@ transcribeButton.addEventListener("click", async () => {
     const { result } = response;
     sourceSegmentsPath = result.segmentsPath;
     setRecognizedSource(result.segments, result.transcript);
+    setMediaReviewSource(response.mediaSource);
     loadSegments(result.segments, result.transcript);
     isProjectDirty = false;
     renderEditor();
@@ -2367,6 +2554,7 @@ showRecognizedButton.addEventListener("click", () => {
     return;
   }
 
+  disposeMediaReviewSession();
   isShowingRecognized = true;
   setRunning(isRunning);
   renderEditor();
@@ -2382,6 +2570,119 @@ showEditsButton.addEventListener("click", () => {
   setRunning(isRunning);
   renderEditor();
   showToast("Показаны мои правки.");
+});
+
+toggleMediaReviewButton.addEventListener("click", () => {
+  if (isRunning || !sourceSegmentsPath || isShowingRecognized) {
+    return;
+  }
+  if (mediaReviewOpen) {
+    disposeMediaReviewSession();
+    renderMediaReview();
+    renderEditor();
+    return;
+  }
+
+  const session = ensureMediaReviewSession();
+  mediaReviewOpen = true;
+  if (!session.enable() && sourceMedia?.status === "available") {
+    showToast("Воспроизведение этой записи недоступно в Client.");
+  }
+  documentMore.open = false;
+  renderMediaReview();
+  renderEditor();
+});
+
+disableMediaReviewButton.addEventListener("click", () => {
+  disposeMediaReviewSession();
+  renderMediaReview();
+  renderEditor();
+});
+
+mediaReviewPlayButton.addEventListener("click", async () => {
+  if (isRunning || !mediaReviewSnapshot.enabled) {
+    return;
+  }
+  try {
+    if (mediaReviewSnapshot.media.state === "playing") {
+      mediaReviewSession?.pause();
+    } else {
+      await mediaReviewSession?.play();
+    }
+  } catch (error) {
+    showToast(`Не удалось начать воспроизведение: ${error.message}`);
+  }
+});
+
+function getMediaReviewSeekTarget() {
+  const duration = mediaReviewSnapshot.media.duration;
+  const requested = Number(mediaReviewSeek.value);
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(requested)) {
+    return null;
+  }
+  return Math.min(duration, Math.max(0, requested));
+}
+
+mediaReviewSeek.addEventListener("input", () => {
+  if (isRunning || !mediaReviewSnapshot.enabled) {
+    return;
+  }
+  const target = getMediaReviewSeekTarget();
+  if (target === null) {
+    return;
+  }
+  mediaReviewScrubbing = true;
+  mediaReviewScrubTarget = target;
+  mediaReviewPendingSeekTarget = null;
+  mediaReviewSession?.seek(target);
+});
+
+mediaReviewSeek.addEventListener("change", () => {
+  const target = mediaReviewScrubTarget ?? getMediaReviewSeekTarget();
+  mediaReviewScrubbing = false;
+  mediaReviewScrubTarget = null;
+  if (target !== null && !isRunning && mediaReviewSnapshot.enabled) {
+    mediaReviewPendingSeekTarget = target;
+    mediaReviewSession?.seek(target);
+  }
+});
+
+mediaReviewSeek.addEventListener("pointercancel", () => {
+  mediaReviewPendingSeekTarget = mediaReviewScrubTarget;
+  mediaReviewScrubbing = false;
+  mediaReviewScrubTarget = null;
+  renderMediaReview();
+});
+
+toggleMediaVideoButton.addEventListener("click", () => {
+  mediaReviewSession?.setVideoVisible(!mediaReviewSnapshot.videoVisible);
+});
+
+relinkMediaSourceButton.addEventListener("click", async () => {
+  if (!sourceSegmentsPath || isRunning) {
+    return;
+  }
+  try {
+    const filePath = await window.asr.selectMedia();
+    if (!filePath) {
+      return;
+    }
+    setRunning(true);
+    const relinkedSource = await window.asr.relinkMediaSource(sourceSegmentsPath, filePath);
+    setMediaReviewSource(relinkedSource);
+    if (relinkedSource.status === "available") {
+      ensureMediaReviewSession().enable();
+      showToast("Исходный файл снова связан с расшифровкой.");
+    } else {
+      showToast("Выбранный файл не совпадает с исходной записью.");
+    }
+  } catch (error) {
+    showToast(`Не удалось связать исходный файл: ${error.message}`);
+  } finally {
+    setRunning(false);
+    renderMediaReview();
+    renderEditor();
+  }
 });
 
 window.asr.onCloseRequested(async () => {

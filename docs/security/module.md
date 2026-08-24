@@ -77,10 +77,15 @@ security audit и не утверждает наличие уязвимости 
   того же run или завершения Client и обслуживает все повторные Range requests
   одного playback lifecycle. CSP разрешает media
   только из `asr-media:`, navigation и renderer-created windows запрещены.
-  Renderer-owned Media Controller хранит только transient source/playback state;
-  он не вызывает project autosave, transactions или history.
+  Renderer-owned Media Controller и MediaReviewSession хранят только transient
+  source/playback/review state; они не вызывают project autosave, transactions
+  или history. Session создаётся explicit enable для current document и при
+  hide/switch/new document останавливает playback и освобождает renderer source.
+  Session получает source только через уже authorizованный opaque URL, а
+  text→media проходит через pure seek intent, не через DOM `file:` URL.
 - **Implementation:** `src/mediaSource.js`, `src/mediaProtocol.js`, `src/main.js`,
-  `src/preload.js`, `src/renderer/mediaController.js` и CSP в
+  `src/preload.js`, `src/renderer/mediaController.js`,
+  `src/renderer/mediaReviewSession.js` и CSP в
   `src/renderer/index.html`.
 - **Verification:** `npm run test:media-foundation` проверяет identity states,
   re-link, opaque URL parsing и forwarding Range header; `npm run
@@ -89,8 +94,8 @@ security audit и не утверждает наличие уязвимости 
   проверяет source→normalized timeline на generated audio/video fixtures.
   Required manual validation: actual seek/load/error in dev и packaged Client
   для representative supported and unsupported codecs и missing/mismatch/re-link.
-  Не реализованы visible player и controls; probe `canPlayType`
-  не считается evidence успешного decode. Existing application shell всё ещё
+  Media Review v1 показывает player только after explicit opt-in; probe
+  `canPlayType` не считается evidence успешного decode. Existing application shell всё ещё
   загружается через `file://`; этот foundation не заменяет его application-wide
   custom protocol и не заявляет устранение всех file-origin рисков. Он исключает
   direct `file:` media loading из нового playback boundary.
@@ -109,7 +114,9 @@ security audit и не утверждает наличие уязвимости 
   play/pause и visibility не serialизуются и не становятся editor transaction.
 - **Verification:** `npm run test:transcript-sync` покрывает baseline refs,
   v1 migration, split/merge gap semantics, history, reopen, restore original,
-  `activeAt` и seek target. No word-level timestamps or media UI are introduced.
+  `activeAt` и seek target. `npm run test:media-review` проверяет opt-in
+  session, replaceable resolver/policy, simultaneous active parts и отсутствие
+  persistence coupling. No word-level timestamps are introduced.
 
 ### Пользовательские пути, файлы и lifecycle run
 

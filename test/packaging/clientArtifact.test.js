@@ -75,9 +75,16 @@ test("creates a provider-neutral Client release ZIP", async () => {
       path.join(extractionDirectory, "resources", "app.asar"),
       path.join("src", "renderer", "renderer.js"),
     ).toString("utf8");
+    const mediaReviewSession = extractFile(
+      path.join(extractionDirectory, "resources", "app.asar"),
+      path.join("src", "renderer", "mediaReviewSession.js"),
+    ).toString("utf8");
     assert.match(rendererIndex, /id="client-version"/);
-    assert.match(rendererSource, /window\.asr\.getClientVersion\(\)/);
-    assert.match(rendererSource, /Client v\$\{await window\.asr\.getClientVersion\(\)\}/);
+    assert.match(rendererSource, /window\.asr\.getClientIdentity\(\)/);
+    assert.match(rendererSource, /Client v\$\{identity\.version\}/);
+    assert.match(rendererIndex, /id="media-review"[^>]*hidden/);
+    assert.match(rendererSource, /createMediaReviewSession\(\{ mediaController, transcriptSync \}\)/);
+    assert.match(mediaReviewSession, /function createSeekResolver/);
 
     const relativePaths = await listRelativePaths(extractionDirectory);
     const forbiddenPaths = [
