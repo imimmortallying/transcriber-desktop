@@ -273,10 +273,8 @@ h2 {
 }
 
 .results-directory {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: var(--space-2);
-  align-items: center;
   color: var(--color-muted);
   font-size: 14px;
 }
@@ -286,11 +284,14 @@ h2 {
 }
 
 #results-directory {
-  flex: 1;
-  min-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.results-directory-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
 }
 
 #file-name {
@@ -409,6 +410,16 @@ button:disabled {
 .support-report p {
   margin: 0 0 var(--space-4);
   color: var(--color-muted);
+}
+
+.dialog-close {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.dialog-close:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-muted);
 }
 
 .saved-runs-heading {
@@ -574,6 +585,18 @@ button:disabled {
   margin-top: var(--space-6);
 }
 
+.document-replace-action {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.document-replace-action .hint,
+.document-actions-section > .hint {
+  margin: 0;
+}
+
 .speaker-name-field {
   display: grid;
   gap: var(--space-1);
@@ -657,9 +680,7 @@ button:disabled {
 }
 
 .speaker-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -667,24 +688,30 @@ button:disabled {
 
 .speaker-list:empty::before {
   color: var(--color-muted);
-  content: "Созданных говорящих пока нет";
+  content: "Добавленных участников пока нет";
   font-size: 14px;
 }
 
 .speaker-list li {
   display: flex;
-  gap: var(--space-2);
+  justify-content: space-between;
+  gap: var(--space-3);
   align-items: center;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-muted);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
   font-size: 14px;
 }
 
+.speaker-list-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
 .speaker-remove {
-  padding: 2px var(--space-1);
-  color: var(--color-danger);
-  font-size: 12px;
+  flex: none;
+  padding: 6px var(--space-2);
+  font-size: 13px;
 }
 
 .document-text {

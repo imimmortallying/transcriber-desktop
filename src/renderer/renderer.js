@@ -1367,10 +1367,10 @@ function renderSpeakerList() {
   for (const speaker of speakers) {
     const item = document.createElement("li");
     const name = document.createElement("span");
-    name.style.color = speaker.color;
+    name.className = "speaker-list-name";
     name.textContent = speaker.name;
     const removeButton = document.createElement("button");
-    removeButton.className = "speaker-remove";
+    removeButton.className = "danger-button speaker-remove";
     removeButton.type = "button";
     removeButton.disabled = isRunning || isShowingRecognized;
     removeButton.textContent = "Удалить";
@@ -2379,7 +2379,7 @@ showRecognizedButton.addEventListener("click", () => {
   isShowingRecognized = true;
   setRunning(isRunning);
   renderEditor();
-  showToast("Показан распознанный текст. Правки сохранены в памяти.");
+  showToast("Показан исходный текст. Правки сохранены в памяти.");
 });
 
 showEditsButton.addEventListener("click", () => {
@@ -2390,7 +2390,7 @@ showEditsButton.addEventListener("click", () => {
   isShowingRecognized = false;
   setRunning(isRunning);
   renderEditor();
-  showToast("Показаны правки редактора.");
+  showToast("Показаны мои правки.");
 });
 
 window.asr.onCloseRequested(async () => {

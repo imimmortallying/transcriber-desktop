@@ -41,13 +41,15 @@
       <dialog id="advanced-panel" class="app-dialog" aria-labelledby="advanced-title">
         <div class="dialog-heading">
           <h2 id="advanced-title">Настройки</h2>
-          <button id="close-settings" class="secondary-button" type="button">Закрыть</button>
+          <button id="close-settings" class="secondary-button dialog-close" type="button">Закрыть</button>
         </div>
         <div class="results-directory">
-          <span class="results-directory-label">Папка результатов:</span>
+          <span class="results-directory-label">Папка результатов</span>
           <output id="results-directory" title="Загружаю путь…">Загружаю путь…</output>
-          <button id="select-results-directory" class="secondary-button" type="button">Изменить</button>
-          <button id="reveal-results-directory" class="secondary-button" type="button" disabled>Открыть папку</button>
+          <div class="results-directory-actions">
+            <button id="select-results-directory" class="secondary-button" type="button">Изменить</button>
+            <button id="reveal-results-directory" class="secondary-button" type="button" disabled>Открыть папку</button>
+          </div>
         </div>
         <details class="advanced-update">
           <summary>Обновление приложения</summary>
@@ -108,12 +110,12 @@
         <dialog id="editor-toolbar" class="app-dialog editor-dialog" aria-labelledby="speaker-tools-title">
           <div class="dialog-heading">
             <h2 id="speaker-tools-title">Говорящие</h2>
-            <button id="close-speakers" class="secondary-button" type="button">Готово</button>
+            <button id="close-speakers" class="secondary-button dialog-close" type="button">Закрыть</button>
           </div>
-          <p class="hint">Добавьте говорящего, затем назначьте его нужным абзацам текста.</p>
+          <p class="hint">Добавьте участников разговора и назначайте их репликам.</p>
           <div class="speaker-tools-content">
             <label class="speaker-name-field">
-              <span>Имя нового говорящего</span>
+              <span>Имя участника</span>
               <input id="speaker-name" type="text" placeholder="Например, Следователь Карамчаков" autocomplete="off" disabled />
             </label>
             <button id="add-speaker" type="button" disabled>Добавить говорящего</button>
@@ -122,24 +124,26 @@
         </dialog>
         <dialog id="editor-actions-dialog" class="app-dialog editor-dialog" aria-labelledby="editor-actions-title">
           <div class="dialog-heading">
-            <h2 id="editor-actions-title">Управление документом</h2>
-            <button id="close-editor-actions" class="secondary-button" type="button">Готово</button>
+            <h2 id="editor-actions-title">Управление расшифровкой</h2>
+            <button id="close-editor-actions" class="secondary-button dialog-close" type="button">Закрыть</button>
           </div>
           <div class="document-actions-section">
-            <h3>Версии текста</h3>
-            <div class="action-group-actions">
-              <button id="reset-recognized" class="secondary-button" type="button" disabled>Вернуть распознанный текст</button>
-                <div class="view-toggle" role="group" aria-label="Режим просмотра текста">
-                  <button id="show-recognized" class="secondary-button" type="button" aria-pressed="false" disabled>Распознанный текст</button>
-                  <button id="show-edits" class="secondary-button is-active" type="button" aria-pressed="true" disabled>Мои правки</button>
-                </div>
+            <h3>Версия текста</h3>
+            <p class="hint">Исходный текст доступен только для просмотра.</p>
+            <div class="view-toggle" role="group" aria-label="Версия текста">
+              <button id="show-recognized" class="secondary-button" type="button" aria-pressed="false" disabled>Исходный текст</button>
+              <button id="show-edits" class="secondary-button is-active" type="button" aria-pressed="true" disabled>Мои правки</button>
+            </div>
+            <div class="document-replace-action">
+              <p class="hint">Заменяет текущие правки исходной версией текста.</p>
+              <button id="reset-recognized" class="danger-button" type="button" disabled>Восстановить исходный текст</button>
             </div>
           </div>
           <div id="run-actions-group" class="document-actions-section" hidden>
-            <h3>Сохранённый результат</h3>
+            <h3>Сохранённая расшифровка</h3>
             <div class="action-group-actions">
               <button id="reveal-run" class="secondary-button" type="button">Открыть в папке</button>
-              <button id="delete-run" class="danger-button" type="button">Удалить прогон</button>
+              <button id="delete-run" class="danger-button" type="button">Удалить расшифровку</button>
             </div>
           </div>
         </dialog>

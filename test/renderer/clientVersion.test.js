@@ -27,7 +27,8 @@ test("renderer obtains the running Client version from Electron main process", a
   assert.match(main, /async function validateSelectedMediaPath\(inputPath\) \{[\s\S]*isSupportedMediaPath\(inputPath\)[\s\S]*await stat\(inputPath\)[\s\S]*fileInfo\.isFile\(\)/);
   assert.match(main, /ipcMain\.handle\("media:select-dropped-file", async \(_event, inputPath\) => validateSelectedMediaPath\(inputPath\)\)/);
   assert.match(main, /function getDocumentActionConfirmation\(action, details\) \{[\s\S]*case "restore-recognized"[\s\S]*case "select-new-media"[\s\S]*case "discard-unsaved-edits"[\s\S]*case "activate-update"[\s\S]*case "delete-speaker"[\s\S]*default:/);
-  assert.match(main, /message: "Вернуть распознанный текст\? Текущие правки будут заменены\./);
+  assert.match(main, /message: "Восстановить исходный текст\? Текущие правки будут заменены\./);
+  assert.match(main, /title: "Удалить расшифровку\?"[\s\S]*buttons: \["Удалить расшифровку", "Отмена"\]/);
   assert.match(main, /message: "Открыть другой файл\? Текущая расшифровка сохранена и останется в Моих расшифровках\."/);
   assert.match(main, /ipcMain\.handle\("dialog:confirm-document-action", async \(event, action, details = null\) => \{[\s\S]*BrowserWindow\.fromWebContents\(event\.sender\)[\s\S]*dialog\.showMessageBox\(owner, getDocumentActionConfirmation\(action, details\)\)/);
   assert.match(preload, /onUpdateCommitted: \(callback\) =>/);
@@ -164,6 +165,37 @@ test("renderer keeps one stable document for reading and editing", async () => {
   assert.match(styles, /\.editor-more-actions \{/);
   assert.match(styles, /\.recognition-progress\[hidden\] \{/);
   assert.match(styles, /\.media-drop-overlay \{[\s\S]*position: fixed;[\s\S]*pointer-events: none;/);
+});
+
+test("dialog polish preserves clear transcript and speaker actions", async () => {
+  const [index, renderer, styles] = await Promise.all([
+    fs.readFile(path.join(projectRoot, "src", "renderer", "index.html"), "utf8"),
+    fs.readFile(path.join(projectRoot, "src", "renderer", "renderer.js"), "utf8"),
+    fs.readFile(path.join(projectRoot, "src", "renderer", "styles.css"), "utf8"),
+  ]);
+
+  assert.match(index, /Добавьте участников разговора и назначайте их репликам\./);
+  assert.match(index, /<h2 id="editor-actions-title">Управление расшифровкой<\/h2>/);
+  assert.match(index, /<button id="show-recognized"[^>]*>Исходный текст<\/button>/);
+  assert.match(index, /<button id="show-edits"[^>]*>Мои правки<\/button>/);
+  assert.match(index, /<button id="reset-recognized" class="danger-button"[^>]*>Восстановить исходный текст<\/button>/);
+  assert.match(index, /<h3>Сохранённая расшифровка<\/h3>/);
+  assert.match(index, /<button id="delete-run" class="danger-button"[^>]*>Удалить расшифровку<\/button>/);
+  assert.match(index, /<button id="close-settings" class="secondary-button dialog-close"[^>]*>Закрыть<\/button>/);
+  assert.match(index, /<button id="close-speakers" class="secondary-button dialog-close"[^>]*>Закрыть<\/button>/);
+  assert.match(index, /<button id="close-editor-actions" class="secondary-button dialog-close"[^>]*>Закрыть<\/button>/);
+  assert.match(index, /<div class="results-directory-actions">/);
+
+  const speakerListRenderer = renderer.slice(
+    renderer.indexOf("function renderSpeakerList()"),
+    renderer.indexOf("function updateSpeakerDirectory("),
+  );
+  assert.match(speakerListRenderer, /name\.className = "speaker-list-name"/);
+  assert.match(speakerListRenderer, /removeButton\.className = "danger-button speaker-remove"/);
+  assert.doesNotMatch(speakerListRenderer, /name\.style\.color/);
+  assert.match(styles, /\.dialog-close \{[\s\S]*border-color: var\(--color-border-strong\);/);
+  assert.match(styles, /\.results-directory-actions \{[\s\S]*flex-wrap: wrap;/);
+  assert.match(styles, /\.speaker-list li \{[\s\S]*border-bottom: 1px solid var\(--color-border\);/);
 });
 
 test("renderer adds dropped media through the existing selection lifecycle", async () => {

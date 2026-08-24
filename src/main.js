@@ -564,8 +564,8 @@ function getDocumentActionConfirmation(action, details) {
     case "restore-recognized":
       return {
         type: "warning",
-        message: "Вернуть распознанный текст? Текущие правки будут заменены. В этой сессии их можно вернуть сочетанием Ctrl+Z.",
-        buttons: ["Вернуть текст", "Отмена"],
+        message: "Восстановить исходный текст? Текущие правки будут заменены. В этой сессии их можно вернуть сочетанием Ctrl+Z.",
+        buttons: ["Восстановить текст", "Отмена"],
         defaultId: 1,
         cancelId: 1,
       };
@@ -753,10 +753,10 @@ ipcMain.handle("run:confirm-delete", async (_event, segmentsPath) => {
   await getExistingManagedRunDirectory(segmentsPath);
   const { response } = await dialog.showMessageBox({
     type: "warning",
-    title: "Удалить прогон распознавания?",
-    message: "Папка прогона будет удалена без возможности восстановления.",
+    title: "Удалить расшифровку?",
+    message: "Сохранённая расшифровка будет удалена без возможности восстановления.",
     detail: "Будут удалены подготовленное аудио, результаты распознавания и сохранённые правки, если они есть.",
-    buttons: ["Удалить прогон", "Отмена"],
+    buttons: ["Удалить расшифровку", "Отмена"],
     defaultId: 1,
     cancelId: 1,
     noLink: true,
