@@ -545,7 +545,69 @@ ipcMain.handle("dialog:select-media", async () => {
   return canceled ? null : filePaths[0];
 });
 
+function getDocumentActionConfirmation(action, details) {
+  switch (action) {
+    case "restore-recognized":
+      return {
+        type: "warning",
+        message: "Вернуть распознанный текст? Текущие правки будут заменены. В этой сессии их можно вернуть сочетанием Ctrl+Z.",
+        buttons: ["Вернуть текст", "Отмена"],
+        defaultId: 1,
+        cancelId: 1,
+      };
+    case "discard-unsaved-edits":
+      return {
+        type: "warning",
+        message: "Не удалось сохранить последние правки. Продолжить без них?",
+        buttons: ["Продолжить", "Отмена"],
+        defaultId: 1,
+        cancelId: 1,
+      };
+    case "activate-update":
+      return {
+        type: "warning",
+        message: "Приложение перезапустится и будет временно недоступно, пока запускается новая версия. Продолжить?",
+        buttons: ["Перезапустить", "Отмена"],
+        defaultId: 1,
+        cancelId: 1,
+      };
+    case "delete-speaker": {
+      if (!details || typeof details !== "object" || Array.isArray(details)
+        || typeof details.name !== "string" || !details.name.trim() || details.name.length > 200
+        || !Number.isSafeInteger(details.usageCount) || details.usageCount < 0) {
+        throw new Error("Некорректные данные для подтверждения удаления говорящего.");
+      }
+      const usageWarning = details.usageCount
+        ? `\n\nГоворящий назначен в ${details.usageCount} реплик${details.usageCount === 1 ? "е" : "ах"}. Эти назначения будут сняты, но текст и границы реплик останутся.`
+        : "";
+      return {
+        type: "warning",
+        message: `Удалить говорящего «${details.name}»?${usageWarning}`,
+        buttons: ["Удалить", "Отмена"],
+        defaultId: 1,
+        cancelId: 1,
+      };
+    }
+    default:
+      throw new Error("Неподдерживаемое действие подтверждения.");
+  }
+}
+
+ipcMain.handle("dialog:confirm-document-action", async (event, action, details = null) => {
+  const owner = BrowserWindow.fromWebContents(event.sender);
+  if (!owner || owner.isDestroyed()) {
+    throw new Error("Окно подтверждения недоступно.");
+  }
+  const { response } = await dialog.showMessageBox(owner, getDocumentActionConfirmation(action, details));
+  return response === 0;
+});
+
 ipcMain.handle("app:get-version", () => app.getVersion());
+ipcMain.handle("app:get-identity", () => ({
+  version: app.getVersion(),
+  mode: app.isPackaged ? "packaged" : "dev",
+  appPath: app.getAppPath(),
+}));
 
 ipcMain.handle("results:get-directory", () => getResultsDataDirectory());
 
@@ -615,9 +677,13 @@ ipcMain.handle("runs:list", async () => {
 });
 
 ipcMain.handle("runs:open", async (_event, segmentsPath) => {
-  await getExistingManagedRunDirectory(segmentsPath);
+  const runDirectory = await getExistingManagedRunDirectory(segmentsPath);
+  const runInfo = await stat(runDirectory);
+  const metadata = getRunListMetadata(path.basename(runDirectory), runInfo.mtimeMs);
   return {
     sourcePath: segmentsPath,
+    sourceName: metadata.sourceName,
+    date: metadata.date,
     segments: await readSavedSegments(segmentsPath),
     project: await readProjectEdits(segmentsPath),
   };

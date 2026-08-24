@@ -54,7 +54,9 @@ test("Full Offline Setup keeps Runtime outside the Client package", async () => 
   assert.equal(packageJson.scripts["test:update-state"], "node --test test/update/installationState.test.js");
   assert.equal(packageJson.scripts["test:packaging"], "node --test test/packaging/fullSetup.test.js test/packaging/fullSetupE2eCleanup.test.js");
   assert.equal(packageJson.scripts["test:diagnostics"], "node --test test/diagnostics/supportReport.test.js");
-  assert.equal(packageJson.scripts["verify:distribution"], "npm run check && npm run test:diagnostics && npm run test:client-update && npm run test:ui-version && npm run test:packaging && npm run test:release");
+  assert.equal(packageJson.scripts["test:editor-history"], "node --test test/renderer/editorHistory.test.js");
+  assert.equal(packageJson.scripts["test:editor-typing"], "node --test test/renderer/editorTyping.test.js");
+  assert.equal(packageJson.scripts["verify:distribution"], "npm run check && npm run test:diagnostics && npm run test:client-update && npm run test:editor-history && npm run test:editor-typing && npm run test:ui-version && npm run test:packaging && npm run test:release");
   assert.equal(packageJson.scripts["test:full-setup-e2e"], "node test/packaging/fullSetupE2eHarness.js");
   assert.match(packageJson.scripts["dist:win"], /^npm run build:launcher && npm run build:coordinator && npm run prepare:runtime && electron-builder/);
   assert.equal(packageJson.devDependencies["7zip-bin"], "5.2.0");

@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("asr", {
   getClientVersion: () => ipcRenderer.invoke("app:get-version"),
+  getClientIdentity: () => ipcRenderer.invoke("app:get-identity"),
+  confirmDocumentAction: (action, details) => ipcRenderer.invoke("dialog:confirm-document-action", action, details),
   selectMedia: () => ipcRenderer.invoke("dialog:select-media"),
   getResultsDirectory: () => ipcRenderer.invoke("results:get-directory"),
   selectResultsDirectory: () => ipcRenderer.invoke("results:select-directory"),

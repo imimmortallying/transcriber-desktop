@@ -57,6 +57,28 @@ main {
   margin: var(--space-4) 0 0;
   color: var(--color-subtle);
   font-size: 13px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.dev-editor-trace {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.dev-editor-trace-output {
+  max-height: 360px;
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
 }
 
 .more-menu,
@@ -452,6 +474,21 @@ button:disabled {
   margin-bottom: var(--space-4);
 }
 
+.save-status {
+  min-width: 92px;
+  color: var(--color-muted);
+  font-size: 13px;
+  text-align: right;
+}
+
+.save-status:empty {
+  visibility: hidden;
+}
+
+.save-status[data-state="error"] {
+  color: var(--color-danger);
+}
+
 .app-dialog {
   box-sizing: border-box;
   width: min(680px, calc(100vw - var(--space-8)));
@@ -606,10 +643,19 @@ button:disabled {
 }
 
 .speaker-list li {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--color-surface-muted);
   font-size: 14px;
+}
+
+.speaker-remove {
+  padding: 2px var(--space-1);
+  color: var(--color-danger);
+  font-size: 12px;
 }
 
 .document-text {

@@ -63,6 +63,13 @@
           <p id="update-status" class="hint">Обновление не подготовлено.</p>
         </details>
         <p id="client-version">Client</p>
+        <details id="dev-editor-trace" class="dev-editor-trace" hidden>
+          <summary>Диагностика редактора (dev)</summary>
+          <button id="capture-dev-editor-trace" class="secondary-button" type="button">Снять snapshot</button>
+          <button id="clear-dev-editor-trace" class="secondary-button" type="button">Очистить трассу</button>
+          <button id="copy-dev-editor-trace" class="secondary-button" type="button">Скопировать трассу</button>
+          <pre id="dev-editor-trace-output" class="dev-editor-trace-output"></pre>
+        </details>
       </dialog>
 
       <dialog id="saved-runs" class="app-dialog saved-runs" aria-labelledby="saved-runs-title">
@@ -89,6 +96,7 @@
         <div class="document-actions">
           <button id="copy-text" class="secondary-button" type="button" disabled>Копировать</button>
           <button id="save" class="secondary-button" type="button" disabled>Сохранить .txt</button>
+          <output id="save-status" class="save-status" aria-live="polite"></output>
           <details id="document-more" class="editor-more">
             <summary>Ещё</summary>
             <div class="editor-more-actions">
@@ -140,6 +148,8 @@
         </div>
       </section>
     </main>
+    <script src="editorHistory.js"></script>
+    <script src="editorTyping.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

@@ -33,13 +33,21 @@ security audit и не утверждает наличие уязвимости 
 - **Trust boundary:** renderer → preload → main/IPC.
 - **Control:** renderer изолирован от Node, а preload предоставляет конечный
   набор операций `window.asr`; обработчики main выполняют проверку типов и
-  контекстные проверки для отдельных операций.
+  контекстные проверки для отдельных операций. Контекстные подтверждения
+  документа идут только через `confirmDocumentAction`: main допускает четыре
+  фиксированных action-id, сам формирует native `dialog.showMessageBox` и
+  привязывает его к `BrowserWindow` sender. Только `delete-speaker` принимает
+  ограниченные имя и число назначений; renderer не может передать произвольный
+  текст, кнопки или native-dialog options. Sync IPC отсутствует; renderer не
+  использует blocking JavaScript dialogs `alert`/`confirm`/`prompt`.
 - **Implementation:** `src/main.js` создаёт окно с `contextIsolation: true` и
-  `nodeIntegration: false`; `src/preload.js` определяет доступные IPC-методы.
-- **Verification:** автоматическая security-проверка не настроена; ручная или
-  ревью-проверка — сверить настройки окна и публичный preload API с
-  `src/preload.js`; отсутствие отдельного негативного теста IPC следует
-  фиксировать при проектировании соответствующего control.
+  `nodeIntegration: false` и владеет `dialog:confirm-document-action`;
+  `src/preload.js` определяет доступные IPC-методы.
+- **Verification:** `npm run test:ui-version` статически проверяет fixed action
+  set, привязку dialog к sender `BrowserWindow`, preload handoff и отсутствие
+  blocking JavaScript dialogs в renderer. Ручная Windows-проверка native
+  confirmation и последующего ввода остаётся обязательной; отдельный
+  негативный Electron integration test пока не реализован.
 
 ### Пользовательские пути, файлы и lifecycle run
 
