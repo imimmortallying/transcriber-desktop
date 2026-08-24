@@ -1,6 +1,6 @@
 {
   "name": "local-asr-prototype",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "Локальный Electron-прототип для распознавания речи через GigaAM.",
   "localAsr": {
