@@ -34,20 +34,26 @@ security audit и не утверждает наличие уязвимости 
 - **Control:** renderer изолирован от Node, а preload предоставляет конечный
   набор операций `window.asr`; обработчики main выполняют проверку типов и
   контекстные проверки для отдельных операций. Контекстные подтверждения
-  документа идут только через `confirmDocumentAction`: main допускает четыре
+  документа идут только через `confirmDocumentAction`: main допускает пять
   фиксированных action-id, сам формирует native `dialog.showMessageBox` и
   привязывает его к `BrowserWindow` sender. Только `delete-speaker` принимает
   ограниченные имя и число назначений; renderer не может передать произвольный
   текст, кнопки или native-dialog options. Sync IPC отсутствует; renderer не
-  использует blocking JavaScript dialogs `alert`/`confirm`/`prompt`.
+  использует blocking JavaScript dialogs `alert`/`confirm`/`prompt`. Для drop
+  исходного media preload принимает только native `File`, получает его путь
+  через Electron `webUtils` и передаёт в фиксированный `media:select-dropped-file`;
+  main применяет ту же проверку расширения и обычного файла, что и picker.
 - **Implementation:** `src/main.js` создаёт окно с `contextIsolation: true` и
   `nodeIntegration: false` и владеет `dialog:confirm-document-action`;
-  `src/preload.js` определяет доступные IPC-методы.
+  `src/preload.js` определяет доступные IPC-методы; `src/mediaSelection.js`
+  хранит общий набор поддерживаемых media extensions.
 - **Verification:** `npm run test:ui-version` статически проверяет fixed action
   set, привязку dialog к sender `BrowserWindow`, preload handoff и отсутствие
-  blocking JavaScript dialogs в renderer. Ручная Windows-проверка native
-  confirmation и последующего ввода остаётся обязательной; отдельный
-  негативный Electron integration test пока не реализован.
+  blocking JavaScript dialogs в renderer, а также узкий drop handoff и запрет
+  browser default drop behavior; `mediaSelection.test.js` проверяет общий набор
+  extensions. Ручная Windows-проверка native confirmation и последующего ввода,
+  а также media drop остаётся обязательной; отдельный негативный Electron
+  integration test пока не реализован.
 
 ### Пользовательские пути, файлы и lifecycle run
 

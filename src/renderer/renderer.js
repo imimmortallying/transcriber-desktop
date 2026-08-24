@@ -1,9 +1,10 @@
 const selectFileButton = document.querySelector("#select-file");
 const transcribeButton = document.querySelector("#transcribe");
+const mediaDropOverlay = document.querySelector("#media-drop-overlay");
 const moreMenu = document.querySelector("#more-menu");
 const openSavedButton = document.querySelector("#open-saved");
 const toggleSettingsButton = document.querySelector("#toggle-settings");
-const selectedFileHint = document.querySelector("#selected-file-hint");
+const mediaDropHint = document.querySelector("#media-drop-hint");
 const documentView = document.querySelector("#document-view");
 const documentMore = document.querySelector("#document-more");
 const openSpeakersButton = document.querySelector("#open-speakers");
@@ -75,6 +76,7 @@ const ICON_PATHS = {
 };
 
 let selectedFile = null;
+let mediaDragDepth = 0;
 let sourceSegmentsPath = null;
 let isRunning = false;
 let isProjectDirty = false;
@@ -735,9 +737,11 @@ function setRunning(running) {
   isRunning = running;
   const visibleDocument = getVisibleDocument();
   const readOnly = visibleDocument.readOnly;
+  const hasSelectedMedia = Boolean(selectedFile || sourceSegmentsPath);
   selectFileButton.disabled = running;
   transcribeButton.disabled = running || !selectedFile;
-  selectedFileHint.hidden = running || !selectedFile || Boolean(sourceSegmentsPath);
+  fileName.hidden = !hasSelectedMedia;
+  mediaDropHint.hidden = hasSelectedMedia;
   openSavedButton.disabled = running;
   toggleSettingsButton.disabled = running;
   openSpeakersButton.disabled = running || !sourceSegmentsPath || isShowingRecognized;
@@ -1050,7 +1054,7 @@ function resetDeletedRunState() {
   hasProjectEdits = false;
   isShowingRecognized = false;
   openSpeakerPopoverParagraphId = null;
-  fileName.value = "Файл не выбран";
+  fileName.value = "";
   setSavedRunActionsVisible(false);
   renderSpeakerList();
   closeDialog(editorActionsDialog);
@@ -1916,15 +1920,15 @@ activateUpdateButton.addEventListener("click", async () => {
   }
 });
 
-selectFileButton.addEventListener("click", async () => {
-  traceEditorSnapshot("file-picker: before-open");
-  const filePath = await window.asr.selectMedia();
-  if (!filePath) {
-    traceEditorSnapshot("file-picker: cancelled");
-    return;
+async function selectMediaFile(filePath) {
+  if (!filePath || isRunning) {
+    return false;
   }
   if (!await confirmDocumentCanBeReplaced()) {
-    return;
+    return false;
+  }
+  if (sourceSegmentsPath && !await confirmDocumentAction("select-new-media")) {
+    return false;
   }
 
   clearAutosaveTimer();
@@ -1946,6 +1950,88 @@ selectFileButton.addEventListener("click", async () => {
   renderEditor();
   clearToast();
   setRunning(false);
+  return true;
+}
+
+function isFileDrag(event) {
+  return Array.from(event.dataTransfer?.types || []).includes("Files");
+}
+
+function setMediaDropOverlayVisible(visible) {
+  mediaDropOverlay.hidden = !visible;
+  mediaDropOverlay.setAttribute("aria-hidden", String(!visible));
+}
+
+function canAcceptDroppedMedia() {
+  return !isRunning && !getFocusOwningDialog();
+}
+
+document.addEventListener("dragenter", (event) => {
+  if (!isFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  mediaDragDepth += 1;
+  setMediaDropOverlayVisible(canAcceptDroppedMedia());
+});
+
+document.addEventListener("dragover", (event) => {
+  if (!isFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+  setMediaDropOverlayVisible(canAcceptDroppedMedia());
+});
+
+document.addEventListener("dragleave", (event) => {
+  if (!isFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  mediaDragDepth = Math.max(0, mediaDragDepth - 1);
+  if (!mediaDragDepth) {
+    setMediaDropOverlayVisible(false);
+  }
+});
+
+document.addEventListener("drop", async (event) => {
+  if (!isFileDrag(event)) {
+    return;
+  }
+  event.preventDefault();
+  mediaDragDepth = 0;
+  setMediaDropOverlayVisible(false);
+  if (!canAcceptDroppedMedia()) {
+    return;
+  }
+
+  const files = Array.from(event.dataTransfer.files);
+  if (files.length !== 1) {
+    showToast("Перетащите один аудио- или видеофайл.");
+    return;
+  }
+
+  try {
+    const filePath = await window.asr.selectDroppedMedia(files[0]);
+    await selectMediaFile(filePath);
+  } catch (error) {
+    showToast(`Не удалось выбрать файл: ${error.message}`);
+  }
+});
+
+selectFileButton.addEventListener("click", async () => {
+  traceEditorSnapshot("file-picker: before-open");
+  try {
+    const filePath = await window.asr.selectMedia();
+    if (!filePath) {
+      traceEditorSnapshot("file-picker: cancelled");
+      return;
+    }
+    await selectMediaFile(filePath);
+  } catch (error) {
+    showToast(`Не удалось выбрать файл: ${error.message}`);
+  }
 });
 
 transcribeButton.addEventListener("click", async () => {

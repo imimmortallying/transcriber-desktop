@@ -23,12 +23,12 @@
           <div class="action-group">
             <div class="action-group-actions">
               <button id="select-file" type="button">Выбрать файл</button>
-              <output id="file-name">Файл не выбран</output>
+              <span id="media-drop-hint" class="media-drop-hint">или перетащите аудио / видео в окно</span>
+              <output id="file-name" hidden></output>
               <button id="transcribe" type="button" disabled>Распознать</button>
             </div>
           </div>
         </section>
-        <p id="selected-file-hint" class="context-hint" hidden>Файл выбран. Нажмите «Распознать», чтобы получить текст.</p>
         <section id="recognition-progress" class="recognition-progress" aria-live="polite" hidden>
           <div class="recognition-progress-heading">
             <p id="recognition-progress-stage">Запускаю распознавание…</p>
@@ -148,6 +148,9 @@
         </div>
       </section>
     </main>
+    <div id="media-drop-overlay" class="media-drop-overlay" aria-hidden="true" hidden>
+      <p>Отпустите аудио или видео для распознавания</p>
+    </div>
     <script src="editorHistory.js"></script>
     <script src="editorTyping.js"></script>
     <script src="renderer.js"></script>

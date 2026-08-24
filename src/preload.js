@@ -1,10 +1,11 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("asr", {
   getClientVersion: () => ipcRenderer.invoke("app:get-version"),
   getClientIdentity: () => ipcRenderer.invoke("app:get-identity"),
   confirmDocumentAction: (action, details) => ipcRenderer.invoke("dialog:confirm-document-action", action, details),
   selectMedia: () => ipcRenderer.invoke("dialog:select-media"),
+  selectDroppedMedia: (file) => ipcRenderer.invoke("media:select-dropped-file", webUtils.getPathForFile(file)),
   getResultsDirectory: () => ipcRenderer.invoke("results:get-directory"),
   selectResultsDirectory: () => ipcRenderer.invoke("results:select-directory"),
   revealResultsDirectory: () => ipcRenderer.invoke("results:reveal-directory"),

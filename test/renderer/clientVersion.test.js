@@ -22,9 +22,13 @@ test("renderer obtains the running Client version from Electron main process", a
   assert.match(main, /await writeFile\(temporaryEditsPath,[\s\S]*await rename\(temporaryEditsPath, editsPath\)/);
   assert.match(preload, /getClientVersion: \(\) => ipcRenderer\.invoke\("app:get-version"\)/);
   assert.match(preload, /getClientIdentity: \(\) => ipcRenderer\.invoke\("app:get-identity"\)/);
+  assert.match(preload, /selectDroppedMedia: \(file\) => ipcRenderer\.invoke\("media:select-dropped-file", webUtils\.getPathForFile\(file\)\)/);
   assert.match(preload, /confirmDocumentAction: \(action, details\) => ipcRenderer\.invoke\("dialog:confirm-document-action", action, details\)/);
-  assert.match(main, /function getDocumentActionConfirmation\(action, details\) \{[\s\S]*case "restore-recognized"[\s\S]*case "discard-unsaved-edits"[\s\S]*case "activate-update"[\s\S]*case "delete-speaker"[\s\S]*default:/);
+  assert.match(main, /async function validateSelectedMediaPath\(inputPath\) \{[\s\S]*isSupportedMediaPath\(inputPath\)[\s\S]*await stat\(inputPath\)[\s\S]*fileInfo\.isFile\(\)/);
+  assert.match(main, /ipcMain\.handle\("media:select-dropped-file", async \(_event, inputPath\) => validateSelectedMediaPath\(inputPath\)\)/);
+  assert.match(main, /function getDocumentActionConfirmation\(action, details\) \{[\s\S]*case "restore-recognized"[\s\S]*case "select-new-media"[\s\S]*case "discard-unsaved-edits"[\s\S]*case "activate-update"[\s\S]*case "delete-speaker"[\s\S]*default:/);
   assert.match(main, /message: "Вернуть распознанный текст\? Текущие правки будут заменены\./);
+  assert.match(main, /message: "Открыть другой файл\? Текущая расшифровка сохранена и останется в Моих расшифровках\."/);
   assert.match(main, /ipcMain\.handle\("dialog:confirm-document-action", async \(event, action, details = null\) => \{[\s\S]*BrowserWindow\.fromWebContents\(event\.sender\)[\s\S]*dialog\.showMessageBox\(owner, getDocumentActionConfirmation\(action, details\)\)/);
   assert.match(preload, /onUpdateCommitted: \(callback\) =>/);
   assert.match(preload, /revealSupportReport: \(reportPath\) => ipcRenderer\.invoke\("support:reveal-report", reportPath\)/);
@@ -77,11 +81,14 @@ test("renderer keeps one stable document for reading and editing", async () => {
   assert.match(renderer, /applyOpenedSavedRun\(result\);[\s\S]*setSavedRunsVisible\(false\)/);
   assert.match(renderer, /function formatSourceName\(filePath\)/);
   assert.match(renderer, /function renderDocumentVisibility\(visibleDocument\)[\s\S]*documentView\.hidden = !text/);
-  assert.match(index, /id="selected-file-hint"/);
+  assert.match(index, /id="media-drop-hint" class="media-drop-hint">или перетащите аудио \/ видео в окно/);
+  assert.match(index, /<output id="file-name" hidden><\/output>/);
+  assert.match(index, /id="media-drop-overlay"[^>]*hidden/);
   assert.match(index, /id="recognition-progress"/);
   assert.match(index, /id="recognition-elapsed"/);
   assert.match(renderer, /function startRecognitionProgress\(\)/);
   assert.match(renderer, /function stopRecognitionProgress\(\)/);
+  assert.match(renderer, /const hasSelectedMedia = Boolean\(selectedFile \|\| sourceSegmentsPath\);[\s\S]*fileName\.hidden = !hasSelectedMedia;[\s\S]*mediaDropHint\.hidden = hasSelectedMedia;/);
   assert.match(renderer, /const AUTOSAVE_DELAY_MS = 1000;/);
   assert.match(index, /id="save-status"/);
   assert.match(renderer, /const TOAST_DURATION_MS = 5000;/);
@@ -130,6 +137,7 @@ test("renderer keeps one stable document for reading and editing", async () => {
   assert.match(renderer, /fileName\.value = result\.sourceName \|\|/);
   assert.match(renderer, /recognitionProgressStage\.textContent = message;/);
   assert.match(renderer, /async function confirmDocumentAction\(action, details\) \{[\s\S]*window\.asr\.confirmDocumentAction\(action, details\)/);
+  assert.match(renderer, /confirmDocumentAction\("select-new-media"\)/);
   assert.match(renderer, /confirmDocumentAction\("restore-recognized"\)/);
   assert.match(renderer, /confirmDocumentAction\("discard-unsaved-edits"\)/);
   assert.match(renderer, /confirmDocumentAction\("activate-update"\)/);
@@ -144,6 +152,7 @@ test("renderer keeps one stable document for reading and editing", async () => {
   assert.doesNotMatch(index, /К расшифровке/);
   assert.doesNotMatch(index, />Редактор</);
   assert.doesNotMatch(index, /Файл и текст остаются на этом компьютере/);
+  assert.doesNotMatch(index, /selected-file-hint|Файл не выбран|Файл выбран\. Нажмите «Распознать»/);
   assert.doesNotMatch(index, /<progress/);
   assert.doesNotMatch(renderer, /распознано сегментов/);
   assert.doesNotMatch(renderer, /Открыто: сегментов/);
@@ -154,6 +163,27 @@ test("renderer keeps one stable document for reading and editing", async () => {
   assert.match(styles, /grid-template-columns: max-content minmax\(0, 1fr\);/);
   assert.match(styles, /\.editor-more-actions \{/);
   assert.match(styles, /\.recognition-progress\[hidden\] \{/);
+  assert.match(styles, /\.media-drop-overlay \{[\s\S]*position: fixed;[\s\S]*pointer-events: none;/);
+});
+
+test("renderer adds dropped media through the existing selection lifecycle", async () => {
+  const [renderer, index] = await Promise.all([
+    fs.readFile(path.join(projectRoot, "src", "renderer", "renderer.js"), "utf8"),
+    fs.readFile(path.join(projectRoot, "src", "renderer", "index.html"), "utf8"),
+  ]);
+
+  assert.match(index, /Отпустите аудио или видео для распознавания/);
+  assert.match(renderer, /async function selectMediaFile\(filePath\) \{[\s\S]*confirmDocumentCanBeReplaced\(\)[\s\S]*sourceSegmentsPath && !await confirmDocumentAction\("select-new-media"\)[\s\S]*clearAutosaveTimer\(\)[\s\S]*selectedFile = filePath;/);
+  assert.match(renderer, /document\.addEventListener\("dragover", \(event\) => \{[\s\S]*event\.preventDefault\(\)[\s\S]*dropEffect = "copy"/);
+  const dropHandler = renderer.slice(
+    renderer.indexOf('document.addEventListener("drop"'),
+    renderer.indexOf('selectFileButton.addEventListener("click"'),
+  );
+  assert.match(dropHandler, /event\.preventDefault\(\)/);
+  assert.match(dropHandler, /files\.length !== 1[\s\S]*Перетащите один аудио- или видеофайл/);
+  assert.match(dropHandler, /window\.asr\.selectDroppedMedia\(files\[0\]\)[\s\S]*selectMediaFile\(filePath\)/);
+  assert.doesNotMatch(dropHandler, /window\.asr\.transcribe\(/);
+  assert.match(renderer, /function canAcceptDroppedMedia\(\) \{[\s\S]*!getFocusOwningDialog\(\)/);
 });
 
 test("renderer has no blocking JavaScript dialogs", async () => {

@@ -25,7 +25,7 @@
     "test:online-update": "node --test test/update/onlineRelease.test.js",
     "test:editor-history": "node --test test/renderer/editorHistory.test.js",
     "test:editor-typing": "node --test test/renderer/editorTyping.test.js",
-    "test:ui-version": "node --test test/renderer/clientVersion.test.js",
+    "test:ui-version": "node --test test/renderer/clientVersion.test.js test/renderer/mediaSelection.test.js",
     "test:client-update": "npm run test:update-state && npm run test:update-package && npm run test:online-update && npm run test:coordinator",
     "test:client-update-e2e": "npm run dist:client && npm run build:coordinator-client-update-e2e && node --test test/coordinator/clientUpdateLifecycleE2e.test.js",
     "test:release": "node --test test/release/cleanDist.test.js test/release/releaseClient.test.js",

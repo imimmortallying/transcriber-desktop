@@ -46,6 +46,35 @@ main {
   padding: var(--space-10) var(--space-8);
 }
 
+.media-drop-overlay {
+  position: fixed;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  background: rgb(23 32 51 / 12%);
+}
+
+.media-drop-overlay[hidden] {
+  display: none;
+}
+
+.media-drop-overlay p {
+  margin: var(--space-8);
+  padding: var(--space-4) var(--space-6);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-menu);
+}
+
+.media-drop-hint {
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
 .app-header {
   display: flex;
   justify-content: end;

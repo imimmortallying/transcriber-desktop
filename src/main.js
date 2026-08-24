@@ -4,6 +4,7 @@ const { spawn } = require("node:child_process");
 const { mkdtemp, readFile, readdir, rename, rm, stat, writeFile } = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const { MEDIA_FILE_EXTENSIONS, isSupportedMediaPath } = require("./mediaSelection");
 const { probeRecognitionRuntime, readSavedSegments, runRecognition } = require("./recognition/runRecognition");
 const { getCurrentRuntime, validateRuntime } = require("./runtime/resolveRuntime");
 const {
@@ -532,18 +533,31 @@ async function readProjectEdits(segmentsPath) {
   }
 }
 
+async function validateSelectedMediaPath(inputPath) {
+  if (!isSupportedMediaPath(inputPath)) {
+    throw new Error("Поддерживаются аудио и видео: MP3, WAV, M4A, OGG, FLAC, MP4, MKV, AVI, MOV и WebM.");
+  }
+  const fileInfo = await stat(inputPath);
+  if (!fileInfo.isFile()) {
+    throw new Error("Выбранный путь не является файлом.");
+  }
+  return inputPath;
+}
+
 ipcMain.handle("dialog:select-media", async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     title: "Выберите аудио или видео",
     properties: ["openFile"],
     filters: [{
       name: "Аудио и видео",
-      extensions: ["mp3", "wav", "m4a", "ogg", "flac", "mp4", "mkv", "avi", "mov", "webm"],
+      extensions: MEDIA_FILE_EXTENSIONS,
     }],
   });
 
-  return canceled ? null : filePaths[0];
+  return canceled ? null : validateSelectedMediaPath(filePaths[0]);
 });
+
+ipcMain.handle("media:select-dropped-file", async (_event, inputPath) => validateSelectedMediaPath(inputPath));
 
 function getDocumentActionConfirmation(action, details) {
   switch (action) {
@@ -552,6 +566,14 @@ function getDocumentActionConfirmation(action, details) {
         type: "warning",
         message: "Вернуть распознанный текст? Текущие правки будут заменены. В этой сессии их можно вернуть сочетанием Ctrl+Z.",
         buttons: ["Вернуть текст", "Отмена"],
+        defaultId: 1,
+        cancelId: 1,
+      };
+    case "select-new-media":
+      return {
+        type: "warning",
+        message: "Открыть другой файл? Текущая расшифровка сохранена и останется в Моих расшифровках.",
+        buttons: ["Открыть файл", "Отмена"],
         defaultId: 1,
         cancelId: 1,
       };
