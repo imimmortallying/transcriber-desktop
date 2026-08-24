@@ -53,10 +53,11 @@ test("renderer obtains the running Client version from Electron main process", a
 });
 
 test("renderer keeps one stable document for reading and editing", async () => {
-  const [index, renderer, styles] = await Promise.all([
+  const [index, renderer, styles, transcriptSync] = await Promise.all([
     fs.readFile(path.join(projectRoot, "src", "renderer", "index.html"), "utf8"),
     fs.readFile(path.join(projectRoot, "src", "renderer", "renderer.js"), "utf8"),
     fs.readFile(path.join(projectRoot, "src", "renderer", "styles.css"), "utf8"),
+    fs.readFile(path.join(projectRoot, "src", "renderer", "transcriptSync.js"), "utf8"),
   ]);
 
   assert.match(index, /id="source-view"/);
@@ -76,7 +77,9 @@ test("renderer keeps one stable document for reading and editing", async () => {
   assert.match(renderer, /speakerControl\.textContent = speaker \? `\$\{speaker\.name\}:` : "\+ говорящий"/);
   assert.match(renderer, /function setParagraphSpeaker\(paragraphId, speakerId\) \{[\s\S]*paragraph\.type = "replica";[\s\S]*paragraph\.speakerId = speakerId;/);
   assert.doesNotMatch(renderer, /paragraph\.type = speakerId === null \? "text" : "replica"/);
-  assert.match(renderer, /function buildRecognizedParagraphs\(segments, transcript = ""\) \{[\s\S]*return text\s*\? \[\{ type: "text", text, timing/);
+  assert.match(index, /<script src="transcriptSync\.js"><\/script>/);
+  assert.match(renderer, /const PROJECT_SCHEMA_VERSION = window\.TranscriptSync\.PROJECT_SCHEMA_VERSION;/);
+  assert.match(transcriptSync, /function buildBaselineParagraphs\(segments, transcript = ""\) \{[\s\S]*sourceSegmentRefs: \[createSourceSegmentRef\(index\)\]/);
   assert.match(index, /<dialog id="editor-toolbar"/);
   assert.match(index, /id="editor-actions-dialog"/);
   assert.match(renderer, /applyOpenedSavedRun\(result\);[\s\S]*setSavedRunsVisible\(false\)/);

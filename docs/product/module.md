@@ -110,9 +110,12 @@ support: файл, который current pipeline может распознат
 Foundation использует одну abstraction для audio и video: metadata сообщает
 `audio` или `video`, а video visibility останется presentation state. HTML media
 capability probe даёт только `probably`/`maybe`/`unsupported`; конечный playback
-результат определяется загрузкой исходного файла в Chromium. Transcript Sync,
-active-text indication и source segment references в editable project ещё не
-реализованы.
+результат определяется загрузкой исходного файла в Chromium. Следующий
+реализованный foundation — UI-independent Transcript Sync: editable project
+хранит `sourceSegmentRefs` к immutable ASR baseline, а pure contract разрешает
+`media time → все active transcript parts` и `replica → начало первого source
+segment`. Это segment-level provenance, не word-level highlighting; visible
+player, indication и controls по-прежнему отсутствуют.
 
 Для audio достаточно playback controls. Для video изображение — дополнительное
 доступное представление: оно может быть одновременно видно с transcript и

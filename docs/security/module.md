@@ -89,11 +89,27 @@ security audit и не утверждает наличие уязвимости 
   проверяет source→normalized timeline на generated audio/video fixtures.
   Required manual validation: actual seek/load/error in dev и packaged Client
   для representative supported and unsupported codecs и missing/mismatch/re-link.
-  Не реализованы visible player, controls и Transcript Sync; probe `canPlayType`
+  Не реализованы visible player и controls; probe `canPlayType`
   не считается evidence успешного decode. Existing application shell всё ещё
   загружается через `file://`; этот foundation не заменяет его application-wide
   custom protocol и не заявляет устранение всех file-origin рисков. Он исключает
   direct `file:` media loading из нового playback boundary.
+
+### Temporal provenance
+
+- **Asset:** immutable ASR baseline и durable связь редактируемого текста с его
+  segment timing.
+- **Trust boundary:** `segments_asr.json` baseline → validated
+  `segments_asr.edits.json` schema v2 → pure renderer Transcript Sync.
+- **Control:** edit хранит structured `sourceSegmentRefs`, а не source path или
+  renderer playback state. Ref разрешается только в bounded baseline index;
+  legacy schema v1 получает ref лишь при unique matching `timing.start`, иначе
+  остаётся без temporal capability. Invalid/out-of-range refs drop fail-soft;
+  они не создают range или seek target. `currentTime`, active paragraph,
+  play/pause и visibility не serialизуются и не становятся editor transaction.
+- **Verification:** `npm run test:transcript-sync` покрывает baseline refs,
+  v1 migration, split/merge gap semantics, history, reopen, restore original,
+  `activeAt` и seek target. No word-level timestamps or media UI are introduced.
 
 ### Пользовательские пути, файлы и lifecycle run
 

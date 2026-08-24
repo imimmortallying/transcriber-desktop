@@ -67,7 +67,7 @@ const modalDialogs = [
   editorActionsDialog,
 ];
 
-const PROJECT_SCHEMA_VERSION = 1;
+const PROJECT_SCHEMA_VERSION = window.TranscriptSync.PROJECT_SCHEMA_VERSION;
 const AUTOSAVE_DELAY_MS = 1000;
 const TOAST_DURATION_MS = 5000;
 const ICON_PATHS = {
@@ -114,6 +114,15 @@ const devTraceSnapshots = [];
 const devTraceEvents = [];
 const editorHistory = window.EditorHistory.createEditorHistory();
 const { TYPING_IDLE_MS, createTypingPlan } = window.EditorTyping;
+const {
+  buildBaselineParagraphs,
+  mergeTiming,
+  migrateProjectProvenance,
+  normalizeTiming,
+  rescaleTiming: rescaleTranscriptTiming,
+  sanitizeTiming,
+  splitTiming: splitTranscriptTiming,
+} = window.TranscriptSync;
 
 async function showClientVersion() {
   try {
@@ -390,7 +399,10 @@ function captureEditorState() {
   return {
     paragraphs: paragraphs.map((paragraph) => ({
       ...paragraph,
-      timing: paragraph.timing.map((part) => ({ ...part })),
+      timing: paragraph.timing.map((part) => ({
+        ...part,
+        sourceSegmentRefs: part.sourceSegmentRefs?.map((ref) => ({ ...ref })) || [],
+      })),
     })),
     nextParagraphId,
   };
@@ -399,7 +411,10 @@ function captureEditorState() {
 function applyEditorState(state) {
   paragraphs = state.paragraphs.map((paragraph) => ({
     ...paragraph,
-    timing: paragraph.timing.map((part) => ({ ...part })),
+    timing: paragraph.timing.map((part) => ({
+      ...part,
+      sourceSegmentRefs: part.sourceSegmentRefs?.map((ref) => ({ ...ref })) || [],
+    })),
   }));
   nextParagraphId = state.nextParagraphId;
   reconcileParagraphSpeakerReferences();
@@ -990,26 +1005,6 @@ function getCleanText(paragraphList = paragraphs, speakerList = speakers) {
     .join("\n\n");
 }
 
-function buildRecognizedParagraphs(segments, transcript = "") {
-  const timing = [];
-  let text = "";
-  for (const segment of segments) {
-    const segmentText = segment.text.trim();
-    if (!segmentText) {
-      continue;
-    }
-    if (text) {
-      text += " ";
-    }
-    const from = text.length;
-    text += segmentText;
-    timing.push({ from, to: text.length, start: segment.start });
-  }
-  return text
-    ? [{ type: "text", text, timing, start: timing[0]?.start ?? null }]
-    : transcript.trim() ? [{ type: "text", text: transcript }] : [];
-}
-
 function setRecognizedSource(segments, transcript = "") {
   recognizedSegments = segments.map((segment) => ({ ...segment }));
   recognizedTranscript = transcript;
@@ -1175,12 +1170,16 @@ function applyOpenedSavedRun(result) {
   resetEditorState();
   fileName.value = result.sourceName || (result.date ? `Расшифровка от ${formatRunDate(result.date)}` : "Сохранённая расшифровка");
   setRecognizedSource(result.segments);
+  let provenanceMigration = null;
   if (result.project) {
-    const { migratedRemark } = restoreProject(result.project);
+    const { migratedRemark, migratedProvenance } = restoreProject(result.project, recognizedSegments);
+    provenanceMigration = migratedProvenance;
     hasProjectEdits = true;
     showToast(migratedRemark
       ? "Открыт сохранённый проект. Ремарки из старого файла преобразованы в обычный текст."
-      : "Открыты сохранённые правки.");
+      : (migratedProvenance
+        ? "Открыт сохранённый проект. Связи с ASR baseline перенесены в новый формат."
+        : "Открыты сохранённые правки."));
   } else {
     loadSegments(result.segments);
     if (!result.segments.length) {
@@ -1190,10 +1189,13 @@ function applyOpenedSavedRun(result) {
   sourceSegmentsPath = result.sourcePath;
   isSavedRunOpen = true;
   setSavedRunActionsVisible(true);
-  isProjectDirty = false;
+  isProjectDirty = Boolean(provenanceMigration);
   renderSpeakerList();
   renderEditor();
   initializeEditorHistory();
+  if (provenanceMigration) {
+    scheduleAutosave();
+  }
 }
 
 async function openSavedRun(segmentsPath) {
@@ -1267,7 +1269,7 @@ async function deleteSavedRun(segmentsPath) {
 }
 
 function loadSegments(segments, transcript = "") {
-  paragraphs = buildRecognizedParagraphs(segments, transcript)
+  paragraphs = buildBaselineParagraphs(segments, transcript)
     .map((values) => createParagraph(values));
 }
 
@@ -1277,7 +1279,7 @@ function getVisibleDocument() {
   }
 
   return {
-    paragraphs: buildRecognizedParagraphs(recognizedSegments, recognizedTranscript)
+    paragraphs: buildBaselineParagraphs(recognizedSegments, recognizedTranscript)
       .map((values, index) => ({ id: index + 1, speakerId: null, ...values })),
     speakers: [],
     readOnly: true,
@@ -1294,11 +1296,14 @@ function isStoredTime(value) {
   return value === null || Number.isFinite(value);
 }
 
-function restoreProject(project) {
+function restoreProject(project, baselineSegments) {
   assertProject(project && typeof project === "object" && !Array.isArray(project), "ожидался объект.");
-  assertProject(project.schemaVersion === PROJECT_SCHEMA_VERSION, "неподдерживаемая версия формата.");
+  assertProject([1, PROJECT_SCHEMA_VERSION].includes(project.schemaVersion), "неподдерживаемая версия формата.");
   assertProject(Array.isArray(project.paragraphs), "отсутствует массив paragraphs.");
   assertProject(Array.isArray(project.speakers), "отсутствует массив speakers.");
+  const provenanceMigration = migrateProjectProvenance(project, baselineSegments);
+  project = provenanceMigration.project;
+  assertProject(project.schemaVersion === PROJECT_SCHEMA_VERSION, "неподдерживаемая версия формата.");
 
   const speakerIds = new Set();
   const restoredSpeakers = project.speakers.map((speaker) => {
@@ -1313,6 +1318,7 @@ function restoreProject(project) {
 
   const paragraphIds = new Set();
   let migratedRemark = false;
+  let sanitizedProvenance = false;
   const restoredParagraphs = project.paragraphs.map((paragraph) => {
     assertProject(paragraph && typeof paragraph === "object", "некорректный абзац.");
     assertProject(Number.isSafeInteger(paragraph.id) && paragraph.id > 0, "некорректный id абзаца.");
@@ -1326,8 +1332,17 @@ function restoreProject(project) {
       assertProject(Number.isSafeInteger(part.from) && Number.isSafeInteger(part.to), "некорректные границы карты таймингов.");
       assertProject(part.from >= 0 && part.to >= part.from && part.to <= paragraph.text.length, "границы карты таймингов выходят за текст абзаца.");
       assertProject(isStoredTime(part.start), "некорректный таймкод в карте таймингов.");
-      return { from: part.from, to: part.to, start: part.start };
+      return {
+        from: part.from,
+        to: part.to,
+        start: part.start,
+        sourceSegmentRefs: part.sourceSegmentRefs,
+      };
     });
+    const sanitizedTiming = sanitizeTiming(timing, baselineSegments);
+    const normalizedTiming = sanitizedTiming.timing;
+    sanitizedProvenance ||= sanitizedTiming.droppedRefs > 0
+      || JSON.stringify(normalizedTiming) !== JSON.stringify(timing);
     const type = paragraph.type === "remark" ? "text" : paragraph.type;
     const speakerId = paragraph.type === "remark" ? null : paragraph.speakerId;
     assertProject(speakerId === null || speakerIds.has(speakerId), "абзац ссылается на неизвестного говорящего.");
@@ -1340,7 +1355,7 @@ function restoreProject(project) {
       text: paragraph.text,
       speakerId,
       start: paragraph.start,
-      timing,
+      timing: normalizedTiming,
     };
   });
 
@@ -1348,7 +1363,11 @@ function restoreProject(project) {
   speakers = restoredSpeakers;
   nextParagraphId = Math.max(0, ...paragraphs.map((paragraph) => paragraph.id)) + 1;
   nextSpeakerId = Math.max(0, ...speakers.map((speaker) => speaker.id)) + 1;
-  return { migratedRemark };
+  return {
+    migratedRemark,
+    migratedProvenance: provenanceMigration.migrated || sanitizedProvenance,
+    unresolvedProvenanceParts: provenanceMigration.unresolvedParts,
+  };
 }
 
 function serializeProject() {
@@ -1356,7 +1375,10 @@ function serializeProject() {
     schemaVersion: PROJECT_SCHEMA_VERSION,
     paragraphs: paragraphs.map((paragraph) => ({
       ...paragraph,
-      timing: paragraph.timing.map((part) => ({ ...part })),
+      timing: normalizeTiming(paragraph.timing).map((part) => ({
+        ...part,
+        sourceSegmentRefs: part.sourceSegmentRefs.map((ref) => ({ ...ref })),
+      })),
     })),
     speakers: speakers.map((speaker) => ({ ...speaker })),
   };
@@ -1475,30 +1497,8 @@ function getSelectionContext() {
   return { paragraph, textElement, offset: documentSelection.anchor.offset };
 }
 
-function getSegmentStart(timing, offset, fallbackStart) {
-  const part = timing.find((item) => offset >= item.from && offset <= item.to)
-    || timing.find((item) => offset < item.from)
-    || timing.at(-1);
-  return part?.start ?? fallbackStart;
-}
-
 function splitTiming(paragraph, offset) {
-  const point = getSegmentStart(paragraph.timing, offset, paragraph.start);
-  const left = [];
-  const right = [];
-
-  for (const part of paragraph.timing) {
-    if (part.to <= offset) {
-      left.push({ ...part });
-    } else if (part.from >= offset) {
-      right.push({ ...part, from: part.from - offset, to: part.to - offset });
-    } else {
-      left.push({ ...part, to: offset });
-      right.push({ ...part, from: 0, to: part.to - offset });
-    }
-  }
-
-  return { left, right, point };
+  return splitTranscriptTiming(paragraph.timing, offset, paragraph.start);
 }
 
 function syncStart(paragraph, fallbackStart = paragraph.start) {
@@ -1516,12 +1516,7 @@ function rescaleTiming(paragraph, nextText) {
     return;
   }
 
-  const ratio = nextText.length / previousLength;
-  paragraph.timing = paragraph.timing.map((part) => ({
-    ...part,
-    from: Math.round(part.from * ratio),
-    to: Math.round(part.to * ratio),
-  }));
+  paragraph.timing = rescaleTranscriptTiming(paragraph.timing, previousLength, nextText.length);
   paragraph.text = nextText;
 }
 
@@ -1575,11 +1570,7 @@ function mergeParagraphWithPrevious(paragraph) {
     const previous = paragraphs[index - 1];
     const splitOffset = previous.text.length;
     previous.text += paragraph.text;
-    previous.timing.push(...paragraph.timing.map((part) => ({
-      ...part,
-      from: part.from + splitOffset,
-      to: part.to + splitOffset,
-    })));
+    previous.timing = mergeTiming(previous.timing, paragraph.timing, splitOffset);
     syncStart(previous);
     paragraphs.splice(index, 1);
     openSpeakerPopoverParagraphId = null;
