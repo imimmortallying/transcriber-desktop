@@ -72,7 +72,8 @@ security audit и не утверждает наличие уязвимости 
   же identity. Поэтому перенос файла допускает re-link, а другой media с тем
   же именем или размером — нет. Renderer получает только random in-memory
   capability URL, не путь; `asr-media` зарегистрирован secure/standard/streaming,
-  разрешает только GET/HEAD и proxy-ит Range headers в `net.fetch(file:)`.
+  разрешает только GET/HEAD, разбирает один byte Range и выдаёт только
+  авторизованный file stream с корректным `206`/`Content-Range`.
   Capability действует в process memory до удаления run, новой authorization
   того же run или завершения Client и обслуживает все повторные Range requests
   одного playback lifecycle. CSP разрешает media
@@ -88,7 +89,7 @@ security audit и не утверждает наличие уязвимости 
   `src/renderer/mediaReviewSession.js` и CSP в
   `src/renderer/index.html`.
 - **Verification:** `npm run test:media-foundation` проверяет identity states,
-  re-link, opaque URL parsing и forwarding Range header; `npm run
+  re-link, opaque URL parsing и byte-range handling; `npm run
   test:media-protocol-e2e` реально запрашивает byte range через Electron
   protocol и сверяет `206` response; `npm run test:timeline-alignment`
   проверяет source→normalized timeline на generated audio/video fixtures.

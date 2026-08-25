@@ -19,7 +19,6 @@ async function main() {
     await writeFile(sourcePath, "abcdefghijklmnopqrstuvwxyz", "utf8");
     await app.whenReady();
     protocol.handle(MEDIA_PROTOCOL_SCHEME, createMediaProtocolHandler({
-      fetchFile: net.fetch,
       resolveAuthorization: async (token) => token === "allowed" ? { filePath: sourcePath } : null,
     }));
 

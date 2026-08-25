@@ -1,4 +1,4 @@
-const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, net, protocol, shell } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, shell } = require("electron");
 const { randomUUID } = require("node:crypto");
 const { spawn } = require("node:child_process");
 const { mkdtemp, readFile, readdir, rename, rm, stat, writeFile } = require("node:fs/promises");
@@ -475,7 +475,6 @@ async function getAuthorizedRunMediaSource(segmentsPath) {
 
 function installMediaProtocol() {
   protocol.handle(MEDIA_PROTOCOL_SCHEME, createMediaProtocolHandler({
-    fetchFile: net.fetch,
     resolveAuthorization: async (token) => {
       const authorization = mediaAuthorizations.get(token);
       if (!authorization) {
