@@ -8,10 +8,11 @@ const {
   buildBaselineParagraphs,
   collectSourceSegmentRefs,
   createTranscriptSync,
+  deriveTextReplace,
+  mapTemporalCoverage,
   mergeTiming,
   migrateProjectProvenance,
   normalizeTiming,
-  rescaleTiming,
   sanitizeTiming,
   splitTiming,
 } = require("../../src/renderer/transcriptSync.js");
@@ -75,11 +76,128 @@ test("v1 edits migrate uniquely resolvable timing starts and preserve ambiguous 
 
 test("ordinary text edits preserve source anchors while character association remains approximate", () => {
   const [document] = buildBaselineParagraphs(baseline);
-  const editedTiming = rescaleTiming(document.timing, document.text.length, `${document.text} исправлено`.length);
-  const edited = paragraph(1, `${document.text} исправлено`, editedTiming);
+  const nextText = `${document.text} исправлено`;
+  const editedTiming = mapTemporalCoverage(document.timing, {
+    ...deriveTextReplace(document.text, nextText),
+    text: document.text,
+  });
+  const edited = paragraph(1, nextText, editedTiming);
 
   assert.deepEqual(refs(edited), [0, 1, 2]);
-  assert.equal(edited.timing[0].sourceSegmentRefs[0].kind, "baseline-segment");
+  assert.deepEqual(edited.timing.map((part) => [part.from, part.to, part.sourceSegmentRefs.map((ref) => ref.index)]), [
+    [0, 6, [0]],
+    [7, 13, [1]],
+    [14, nextText.length, [2]],
+  ]);
+});
+
+function coverage(index, from, to) {
+  return {
+    from,
+    to,
+    start: baseline[index].start,
+    sourceSegmentRefs: [{ kind: "baseline-segment", index }],
+  };
+}
+
+function coverageShape(timing) {
+  return timing.map((part) => [part.from, part.to, part.sourceSegmentRefs.map((ref) => ref.index)]);
+}
+
+test("coverage mapper shifts untouched text and lets edits inside one segment keep that segment", () => {
+  const timing = [coverage(0, 0, 4), coverage(1, 4, 8)];
+
+  assert.deepEqual(coverageShape(mapTemporalCoverage(timing, {
+    from: 2,
+    to: 2,
+    insertedText: "XX",
+    text: "aaaabbbb",
+  })), [[0, 6, [0]], [6, 10, [1]]]);
+  assert.deepEqual(coverageShape(mapTemporalCoverage(timing, {
+    from: 1,
+    to: 3,
+    insertedText: "",
+    text: "aaaabbbb",
+  })), [[0, 2, [0]], [2, 6, [1]]]);
+  assert.deepEqual(coverageShape(mapTemporalCoverage(timing, {
+    from: 0,
+    to: 4,
+    insertedText: "исправлено",
+    text: "aaaabbbb",
+  })), [[0, 10, [0]], [10, 14, [1]]]);
+});
+
+test("coverage mapper inherits union only from the edited range or its immediate boundary", () => {
+  const timing = [coverage(0, 0, 4), coverage(1, 4, 8), coverage(2, 8, 12), coverage(0, 12, 16)];
+
+  assert.deepEqual(coverageShape(mapTemporalCoverage(timing, {
+    from: 4,
+    to: 4,
+    insertedText: "новое",
+    text: "aaaabbbbccccdddd",
+  })), [[0, 4, [0]], [4, 9, [0, 1]], [9, 13, [1]], [13, 17, [2]], [17, 21, [0]]]);
+  assert.deepEqual(coverageShape(mapTemporalCoverage(timing, {
+    from: 2,
+    to: 14,
+    insertedText: "X",
+    text: "aaaabbbbccccdddd",
+  })), [[0, 2, [0]], [2, 3, [0, 1, 2]], [3, 5, [0]]]);
+});
+
+test("whole inserted paragraph between source fragments keeps their immediate union without moving either fragment", () => {
+  const timing = [coverage(0, 0, 4), coverage(1, 5, 9)];
+  const insertedText = "\nновый абзац\n";
+  const mapped = mapTemporalCoverage(timing, {
+    from: 5,
+    to: 5,
+    insertedText,
+    text: "aaaa bbbb",
+  });
+
+  assert.deepEqual(coverageShape(mapped), [
+    [0, 4, [0]],
+    [5, 5 + insertedText.length, [0, 1]],
+    [5 + insertedText.length, 9 + insertedText.length, [1]],
+  ]);
+});
+
+test("unanchored text stays unanchored and multi-segment coverage remains deliberately broad", () => {
+  const union = [{
+    from: 0,
+    to: 4,
+    start: 0,
+    sourceSegmentRefs: [
+      { kind: "baseline-segment", index: 1 },
+      { kind: "baseline-segment", index: 0 },
+      { kind: "baseline-segment", index: 1 },
+    ],
+  }];
+  assert.deepEqual(coverageShape(mapTemporalCoverage(union, {
+    from: 2,
+    to: 2,
+    insertedText: "X",
+    text: "aaaa",
+  })), [[0, 5, [0, 1]]]);
+  assert.deepEqual(coverageShape(mapTemporalCoverage([coverage(0, 2, 4)], {
+    from: 0,
+    to: 0,
+    insertedText: "X",
+    text: "xxaa",
+  })), [[0, 1, []], [3, 5, [0]]]);
+});
+
+test("minimal replace fallback gives paste and IME commits the same local coverage contract", () => {
+  assert.deepEqual(deriveTextReplace("я приехал вчера", "я приехал сегодня"), {
+    from: 10,
+    to: 15,
+    insertedText: "сегодня",
+  });
+  const timing = [coverage(0, 0, 8), coverage(1, 8, 16)];
+  const replacement = deriveTextReplace("aaaabbbbccccdddd", "aaaaИМЕccccdddd");
+  assert.deepEqual(coverageShape(mapTemporalCoverage(timing, { ...replacement, text: "aaaabbbbccccdddd" })), [
+    [0, 7, [0]],
+    [7, 15, [1]],
+  ]);
 });
 
 test("speaker assignment changes replica metadata without changing provenance", () => {
@@ -193,6 +311,31 @@ test("history, save/reopen and restore original retain or rebuild provenance as 
 
   const [restored] = buildBaselineParagraphs(baseline.slice(0, 2));
   assert.deepEqual(refs(restored), [0, 1]);
+});
+
+test("coverage edits are restored by the existing history snapshot and v2 reopen", () => {
+  const timing = [coverage(0, 0, 4), coverage(1, 4, 8)];
+  const original = paragraph(1, "aaaabbbb", timing);
+  const edited = paragraph(1, "aaaaновоеbbbb", mapTemporalCoverage(timing, {
+    from: 4,
+    to: 4,
+    insertedText: "новое",
+    text: original.text,
+  }));
+  const history = createEditorHistory();
+  history.initialize({ paragraphs: [original], nextParagraphId: 2 }, null);
+  history.record({ paragraphs: [edited], nextParagraphId: 2 }, null, { kind: "typing" });
+
+  assert.deepEqual(coverageShape(history.undo().document.paragraphs[0].timing), [[0, 4, [0]], [4, 8, [1]]]);
+  assert.deepEqual(coverageShape(history.redo().document.paragraphs[0].timing), [[0, 4, [0]], [4, 9, [0, 1]], [9, 13, [1]]]);
+
+  const reopened = migrateProjectProvenance({
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    paragraphs: [edited],
+    speakers: [],
+  }, baseline);
+  assert.equal(reopened.migrated, false);
+  assert.deepEqual(coverageShape(reopened.project.paragraphs[0].timing), [[0, 4, [0]], [4, 9, [0, 1]], [9, 13, [1]]]);
 });
 
 test("split, merge and persistence normalize refs without duplicates in baseline order", () => {

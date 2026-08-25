@@ -27,7 +27,7 @@
     "test:media-protocol-e2e": "electron test/media/mediaProtocol.e2e.main.js",
     "test:timeline-alignment": "pipeline\\.venv\\Scripts\\python.exe -m pytest pipeline/tests/test_timeline_alignment.py -q",
     "test:transcript-sync": "node --test test/renderer/transcriptSync.test.js",
-    "test:media-review": "node --test test/renderer/mediaReviewSession.test.js test/renderer/mediaReviewContract.test.js",
+    "test:media-review": "node --test test/renderer/mediaReviewSession.test.js test/renderer/mediaReviewContract.test.js test/renderer/timedTextPresentation.test.js test/main/transcriptContextMenu.test.js",
     "test:editor-history": "node --test test/renderer/editorHistory.test.js",
     "test:editor-typing": "node --test test/renderer/editorTyping.test.js",
     "test:ui-version": "node --test test/renderer/clientVersion.test.js test/renderer/mediaSelection.test.js",

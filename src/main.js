@@ -32,6 +32,7 @@ const {
 } = require("./update/installationState");
 const { ONLINE_RELEASE_METADATA_URL } = require("./update/onlineReleaseConfig");
 const { checkForOnlineUpdate, downloadOnlineUpdate } = require("./update/onlineRelease");
+const { showTranscriptContextMenu } = require("./transcriptContextMenu");
 
 const installationStateMode = process.argv.find((argument) => argument.startsWith("--asr-installation-state="));
 const ipcSpikeClientBehavior = process.argv.find((argument) => argument.startsWith("--asr-ipc-spike-client-behavior="));
@@ -730,6 +731,18 @@ ipcMain.handle("dialog:confirm-document-action", async (event, action, details =
   }
   const { response } = await dialog.showMessageBox(owner, getDocumentActionConfirmation(action, details));
   return response === 0;
+});
+
+ipcMain.handle("editor:show-transcript-context-menu", async (event, includeMediaAction) => {
+  const browserWindow = BrowserWindow.fromWebContents(event.sender);
+  if (!browserWindow) {
+    return null;
+  }
+  return showTranscriptContextMenu({
+    Menu,
+    browserWindow,
+    includeMediaAction: Boolean(includeMediaAction),
+  });
 });
 
 ipcMain.handle("app:get-version", () => app.getVersion());

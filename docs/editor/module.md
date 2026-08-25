@@ -94,8 +94,19 @@ Backspace в начале model-абзаца обрабатывается отд
 GigaAM не даёт, поэтому связь символов и слов внутри segment остаётся
 приблизительной. При разрыве внутри segment обе части сохраняют один и тот же
 ref; при разрыве на границе refs расходятся естественно. После ручной правки
-границы частей масштабируются по длине абзаца, но ref не создаёт фиктивной
-временной точки внутри segment.
+`TemporalCoverageMapper` локально применяет replace `[from,to) → insertedText`:
+незатронутые части только сдвигаются, остатки затронутых сохраняют coverage, а
+новый текст получает deduplicated union coverage заменённой области. Для
+zero-width insert берётся coverage внутри части либо только непосредственные
+left/right boundaries; пробельный разделитель соседних source parts также
+считается этой непосредственной границей. Если usable coverage нет, новый текст
+остаётся unanchored. Mapper не масштабирует ranges по длине абзаца, не ищет
+сходство с ASR text и не создаёт timestamp. Обычный input использует
+проверенный span из `beforeinput`; paste/delete и IME commit fallback-ят на
+детерминированный minimal replace через common prefix/suffix. Соседние части с
+одинаковым normalized coverage могут coalesce. Таким образом,
+`sourceSegmentRefs` означают source coverage текущего текста, а не точное
+пословное утверждение.
 Таймкод показан в компактной колонке рядом со своим абзацем, чтобы оставаться
 частью той же реплики и не создавать широкого пустого поля.
 
@@ -125,13 +136,23 @@ hide review, смене run или нового документа: playback о�
 отвязывается, player и active indication исчезают. Source текущего run остаётся
 доступен для следующего explicit enable; missing/mismatch получает re-link только
 внутри enabled review. Session не входит в project, autosave или Editor History.
-Текущий resolver строит intent от replica к началу первого usable baseline
-segment; UI передаёт intent session, а не вызывает MediaController напрямую.
+Resolver по умолчанию строит intent к первому usable baseline segment; когда
+presentation передаёт fragment coverage, он использует его первый usable ref.
+UI передаёт intent session, а не вызывает MediaController напрямую.
 Highlight policy представляет все active parts, поэтому несколько replica могут
-быть отмечены одновременно. Для untouched большого editable paragraph adapter
-показывает текущий exact ASR segment range рядом с спокойной active indication,
-не меняя contenteditable text DOM: связь символов внутри segment остаётся
-approximate. Audio воспроизводится без изображения; video использует тот же
+быть отмечены одновременно. `TimedTextPresentation` превращает их в DOM ranges
+над существующим text node и регистрирует через CSS Custom Highlight API: он не
+оборачивает и не меняет editable text DOM, autosave или Editor History. Для
+untouched большого editable paragraph adapter показывает current exact ASR
+segment range без заявления word precision; при VAD gap range отсутствует. При
+enabled review ПКМ по editable fragment сопоставляет фактическую pointer
+position с локальной частью coverage и открывает native editing menu с обычными
+undo/redo/cut/copy/paste/select-all. «Перейти к записи» добавляется только при
+usable coverage и передаёт seek intent к первому usable segment этой coverage
+через session/resolver; для unanchored text и выключенного review пункта нет.
+Ни кнопка, ни иной overlay в text flow или editable DOM не добавляются. При
+отсутствии Custom Highlight API подсветка fail-soft отсутствует, а DOM остаётся
+неизменным. Audio воспроизводится без изображения; video использует тот же
 contract и может временно показывать/скрывать изображение. Для audio и скрытого
 video controls остаются в компактной playback bar. `DocumentShell` остаётся
 единой card-оболочкой: toolbar и workspace имеют общие внешние границы. При

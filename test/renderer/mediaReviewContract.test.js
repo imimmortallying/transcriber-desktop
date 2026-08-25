@@ -8,12 +8,14 @@ const test = require("node:test");
 const projectRoot = path.resolve(__dirname, "../..");
 
 test("Media Review UI uses the transient session boundary without changing document persistence", async () => {
-  const [index, renderer, session, preload, styles] = await Promise.all([
+  const [index, renderer, session, preload, styles, contextMenu, presentation] = await Promise.all([
     fs.readFile(path.join(projectRoot, "src", "renderer", "index.html"), "utf8"),
     fs.readFile(path.join(projectRoot, "src", "renderer", "renderer.js"), "utf8"),
     fs.readFile(path.join(projectRoot, "src", "renderer", "mediaReviewSession.js"), "utf8"),
     fs.readFile(path.join(projectRoot, "src", "preload.js"), "utf8"),
     fs.readFile(path.join(projectRoot, "src", "renderer", "styles.css"), "utf8"),
+    fs.readFile(path.join(projectRoot, "src", "transcriptContextMenu.js"), "utf8"),
+    fs.readFile(path.join(projectRoot, "src", "renderer", "timedTextPresentation.js"), "utf8"),
   ]);
 
   assert.match(index, /id="toggle-media-review"/);
@@ -25,6 +27,7 @@ test("Media Review UI uses the transient session boundary without changing docum
   assert.match(index, /id="media-pane-header-slot"[\s\S]*id="media-review-presentation"[\s\S]*id="media-pane-transport-slot"/);
   assert.match(index, /id="media-review"[^>]*hidden/);
   assert.match(index, /mediaReviewSession\.js/);
+  assert.match(index, /timedTextPresentation\.js/);
   assert.match(renderer, /let mediaReviewSession = null/);
   assert.match(renderer, /const mediaReviewWorkspace = document\.querySelector\("#media-review-workspace"\)/);
   assert.match(renderer, /const mediaTransportSlot = document\.querySelector\("#media-transport-slot"\)/);
@@ -35,7 +38,14 @@ test("Media Review UI uses the transient session boundary without changing docum
   assert.match(renderer, /function applyOpenedSavedRun\(result\) \{[\s\S]*resetMediaReviewForDocument\(\)[\s\S]*setMediaReviewSource\(result\.mediaSource\)/);
   assert.match(renderer, /transcribeButton\.addEventListener\("click", async \(\) => \{[\s\S]*resetMediaReviewForDocument\(\)[\s\S]*setMediaReviewSource\(response\.mediaSource\)/);
   assert.doesNotMatch(renderer, /const mediaController = window\.MediaController\.createMediaController/);
-  assert.match(renderer, /mediaReviewSession\?\.requestSeek\(paragraph\)/);
+  assert.match(renderer, /TimedTextPresentation\.createTimedTextPresentation/);
+  assert.match(renderer, /timedTextPresentation\.render\(mediaReviewSnapshot\)/);
+  assert.match(renderer, /editor\.addEventListener\("contextmenu", async \(event\) => \{[\s\S]*showTranscriptContextMenu\(Boolean\(fragment\)\)/);
+  assert.match(renderer, /resolveContextualMediaFragment\(event\)[\s\S]*mediaReviewSnapshot\.enabled/);
+  assert.match(renderer, /requestSeek\(fragment\.paragraph, \{ timedRange: fragment\.timedRange \}\)/);
+  assert.doesNotMatch(renderer, /textContent = "К записи"/);
+  assert.doesNotMatch(presentation, /pointermove|selectionchange|timed-text-seek|createElement\("button"\)/);
+  assert.doesNotMatch(presentation, /\.append\(|\.insertBefore\(|classList\.|\.style\./);
   assert.doesNotMatch(renderer, /mediaController\.seek\(/);
   assert.match(renderer, /let mediaReviewScrubbing = false/);
   assert.match(renderer, /mediaReviewSeek\.addEventListener\("input", \(\) => \{[\s\S]*mediaReviewScrubbing = true;[\s\S]*mediaReviewSession\?\.seek\(target\)/);
@@ -46,11 +56,15 @@ test("Media Review UI uses the transient session boundary without changing docum
   assert.match(renderer, /mediaPaneHeaderSlot\.append\(mediaReviewHeader, mediaReviewStatus\);[\s\S]*mediaPaneTransportSlot\.append\(mediaReviewControls, relinkMediaSourceButton\)/);
   assert.doesNotMatch(renderer, /addEventListener\("resize"/);
   assert.match(session, /function createSeekResolver/);
+  assert.match(session, /timedRange\?\.start/);
   assert.match(session, /function createHighlightPolicy/);
   assert.match(session, /activeIndications\(activeStates, media\.currentTime\)/);
   assert.match(session, /transcriptSync\.activeAt\(media\.currentTime\)/);
   assert.doesNotMatch(session, /saveProject|editorHistory|autosave|currentTime.*schemaVersion/);
   assert.match(preload, /relinkMediaSource: \(segmentsPath, filePath\) => ipcRenderer\.invoke\("media:relink-source", segmentsPath, filePath\)/);
+  assert.match(preload, /showTranscriptContextMenu: \(includeMediaAction\) => ipcRenderer\.invoke\("editor:show-transcript-context-menu", Boolean\(includeMediaAction\)\)/);
+  assert.match(contextMenu, /role: "cut"[\s\S]*role: "copy"[\s\S]*role: "paste"/);
+  assert.match(contextMenu, /label: "Перейти к записи"/);
   assert.match(styles, /\.media-review\[hidden\],[\s\S]*display: none !important/);
   assert.match(styles, /main\.app-content:has\(#document-view\[data-review-layout="video"\]\)[\s\S]*max-width: 1440px/);
   assert.match(styles, /\.media-review-workspace\[data-review-layout="video"\] \{[\s\S]*grid-template-columns: 1fr[\s\S]*"media"[\s\S]*"transcript"/);
@@ -59,4 +73,6 @@ test("Media Review UI uses the transient session boundary without changing docum
   assert.match(styles, /@media \(min-width: 1360px\) \{[\s\S]*\.media-review-workspace\[data-review-layout="video"\] \.media-review \{[\s\S]*position: sticky[\s\S]*align-self: start/);
   assert.doesNotMatch(styles, /media-review-workspace\[data-review-layout="video"\][\s\S]*overflow: auto/);
   assert.match(styles, /\.media-review-presentation video \{[\s\S]*object-fit: contain/);
+  assert.match(styles, /::highlight\(asr-timed-active\)/);
+  assert.doesNotMatch(styles, /timed-text-seek|is-media-review-active/);
 });

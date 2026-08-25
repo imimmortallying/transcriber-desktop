@@ -636,21 +636,9 @@ button:disabled {
   line-height: 1.5;
 }
 
-.document-paragraph.is-media-review-active {
-  margin-inline: calc(var(--space-2) * -1);
-  padding-inline: var(--space-2);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-muted);
-  box-shadow: inset 3px 0 0 var(--color-primary);
-}
-
-.document-paragraph.is-media-review-active::after {
-  content: attr(data-media-review-active-range);
-  display: block;
-  margin-top: var(--space-1);
-  color: var(--color-muted);
-  font-size: 0.8125rem;
-  font-variant-numeric: tabular-nums;
+::highlight(asr-timed-active) {
+  color: inherit;
+  background: color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
 .media-review-workspace {

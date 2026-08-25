@@ -186,17 +186,113 @@
     ]);
   }
 
-  function rescaleTiming(timing, previousLength, nextLength) {
-    if (!previousLength || previousLength === nextLength) {
-      return normalizeTiming(timing);
+  function normalizeCoverageTiming(timing) {
+    const normalized = [];
+    for (const part of timing || []) {
+      if (!Number.isSafeInteger(part.from) || !Number.isSafeInteger(part.to) || part.to <= part.from) {
+        continue;
+      }
+      const next = {
+        ...part,
+        sourceSegmentRefs: normalizeSourceSegmentRefs(part.sourceSegmentRefs),
+      };
+      const previous = normalized.at(-1);
+      if (previous
+        && previous.to === next.from
+        && areSameSourceSegmentRefs(previous.sourceSegmentRefs, next.sourceSegmentRefs)) {
+        previous.to = next.to;
+      } else {
+        normalized.push(next);
+      }
     }
-    const ratio = nextLength / previousLength;
-    return normalizeTiming(timing.map((part) => ({
-      ...part,
-      from: Math.round(part.from * ratio),
-      to: Math.round(part.to * ratio),
-      sourceSegmentRefs: cloneSourceSegmentRefs(part.sourceSegmentRefs),
-    })));
+    return normalized;
+  }
+
+  function deriveTextReplace(previousText, nextText) {
+    const previous = String(previousText || "");
+    const next = String(nextText || "");
+    let from = 0;
+    while (from < previous.length && from < next.length && previous[from] === next[from]) {
+      from += 1;
+    }
+    let suffixLength = 0;
+    while (suffixLength < previous.length - from
+      && suffixLength < next.length - from
+      && previous[previous.length - suffixLength - 1] === next[next.length - suffixLength - 1]) {
+      suffixLength += 1;
+    }
+    return {
+      from,
+      to: previous.length - suffixLength,
+      insertedText: next.slice(from, next.length - suffixLength),
+    };
+  }
+
+  function refsFromParts(parts) {
+    return normalizeSourceSegmentRefs((parts || []).flatMap((part) => part.sourceSegmentRefs || []));
+  }
+
+  function mapTemporalCoverage(timing, { from, to, insertedText = "", text = "" }) {
+    if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to < from) {
+      throw new Error("Некорректный диапазон изменения текста.");
+    }
+    const current = normalizeCoverageTiming(timing);
+    const inserted = String(insertedText);
+    const replacedParts = from === to
+      ? current.filter((part) => part.from < from && from < part.to)
+      : current.filter((part) => part.from < to && part.to > from);
+    let boundaryParts = [
+      ...current.filter((part) => part.to === from),
+      ...current.filter((part) => part.from === to),
+    ];
+    if (from === to) {
+      const leftBoundary = current.filter((part) => part.to <= from).at(-1);
+      const rightBoundary = current.find((part) => part.from >= to);
+      const gap = leftBoundary && rightBoundary
+        ? String(text).slice(leftBoundary.to, rightBoundary.from)
+        : null;
+      if (leftBoundary && rightBoundary && /^\s*$/u.test(gap) && from >= leftBoundary.to && from <= rightBoundary.from) {
+        boundaryParts = [leftBoundary, rightBoundary];
+      }
+    }
+    const contextParts = refsFromParts(replacedParts).length ? replacedParts : boundaryParts;
+    const sourceSegmentRefs = refsFromParts(contextParts);
+    const start = sourceSegmentRefs.length
+      ? contextParts.find((part) => Number.isFinite(part.start))?.start ?? null
+      : null;
+    const delta = inserted.length - (to - from);
+    const left = [];
+    const right = [];
+
+    for (const part of current) {
+      if (part.to <= from) {
+        left.push({ ...part, sourceSegmentRefs: cloneSourceSegmentRefs(part.sourceSegmentRefs) });
+      } else if (part.from >= to) {
+        right.push({
+          ...part,
+          from: part.from + delta,
+          to: part.to + delta,
+          sourceSegmentRefs: cloneSourceSegmentRefs(part.sourceSegmentRefs),
+        });
+      } else {
+        if (part.from < from) {
+          left.push({ ...part, to: from, sourceSegmentRefs: cloneSourceSegmentRefs(part.sourceSegmentRefs) });
+        }
+        if (part.to > to) {
+          right.push({
+            ...part,
+            from: from + inserted.length,
+            to: part.to + delta,
+            sourceSegmentRefs: cloneSourceSegmentRefs(part.sourceSegmentRefs),
+          });
+        }
+      }
+    }
+
+    const insertedPart = inserted
+      ? [{ from, to: from + inserted.length, start, sourceSegmentRefs }]
+      : [];
+    return normalizeCoverageTiming([...left, ...insertedPart, ...right]);
   }
 
   function collectSourceSegmentRefs(paragraph) {
@@ -261,13 +357,14 @@
     collectSourceSegmentRefs,
     createSourceSegmentRef,
     createTranscriptSync,
+    deriveTextReplace,
     isSourceSegmentRef,
+    mapTemporalCoverage,
     mergeTiming,
     migrateProjectProvenance,
     normalizeSourceSegmentRefs,
     normalizeTiming,
     resolveTimedRanges,
-    rescaleTiming,
     sanitizeTiming,
     splitTiming,
   };

@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("asr", {
   getClientVersion: () => ipcRenderer.invoke("app:get-version"),
   getClientIdentity: () => ipcRenderer.invoke("app:get-identity"),
   confirmDocumentAction: (action, details) => ipcRenderer.invoke("dialog:confirm-document-action", action, details),
+  showTranscriptContextMenu: (includeMediaAction) => ipcRenderer.invoke("editor:show-transcript-context-menu", Boolean(includeMediaAction)),
   selectMedia: () => ipcRenderer.invoke("dialog:select-media"),
   selectDroppedMedia: (file) => ipcRenderer.invoke("media:select-dropped-file", webUtils.getPathForFile(file)),
   getResultsDirectory: () => ipcRenderer.invoke("results:get-directory"),

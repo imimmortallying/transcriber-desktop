@@ -114,7 +114,12 @@ capability probe даёт только `probably`/`maybe`/`unsupported`; кон�
 реализованный foundation — UI-independent Transcript Sync: editable project
 хранит `sourceSegmentRefs` к immutable ASR baseline, а pure contract разрешает
 `media time → все active transcript parts` и `replica → начало первого source
-segment`. Это segment-level provenance, не word-level highlighting.
+segment`. Это segment-level provenance, не word-level highlighting. После
+ручной правки refs остаются source coverage current text: локальный replace
+сохраняет coverage нетронутых ranges, а новый text наследует coverage
+затронутого диапазона или непосредственных source boundaries. Coverage может
+стать union нескольких segments и тогда честно активен для каждого из них; это
+не создаёт new timestamps и не обещает word-level alignment.
 
 Реализован Media Review v1 как opt-in слой над теми же foundation. Обычный
 editor не меняется, пока пользователь явно не включает «Проверку по записи».
@@ -125,8 +130,13 @@ play/pause, review enabled, active indication и video visibility исчезаю
 закрытии review или смене документа. Session создаётся лишь по explicit enable;
 при document switch она останавливает playback и освобождает renderer source,
 поэтому previous run не может остаться в новом документе. Text→media сейчас
-означает intent от replica к началу первого usable referenced baseline segment; future strategies
-(part/word/pre-roll) заменяют resolver, не editor или controller. Media→text
+означает contextual intent от current coverage fragment к началу его первого
+usable referenced baseline segment. При enabled review он доступен через
+«Перейти к записи» в native context menu editable текста: pointer position
+определяет fragment, а обычные editing actions меню сохраняются. Для
+unanchored text и выключенного review media action не показывается; transient
+hover/caret button нет. Future strategies (part/word/pre-roll) заменяют
+resolver, не editor или controller. Media→text
 использует все `activeAt` parts и допускает несколько спокойных indication
 одновременно. Для неразделённого baseline paragraph adapter показывает active
 exact segment range, не меняя contenteditable text и не заявляя word precision.

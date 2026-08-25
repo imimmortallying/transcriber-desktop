@@ -71,6 +71,22 @@ test("Media Review is opt-in and resolves text-to-media through a replaceable se
   assert.equal(session.requestSeek(second), null);
 });
 
+test("contextual timed fragments seek through the resolver to their own segment start", () => {
+  const mediaController = createFakeMediaController();
+  const session = createMediaReviewSession({
+    mediaController,
+    transcriptSync: { activeAt: () => [], seekTarget: () => 4 },
+  });
+
+  session.setSource(source);
+  assert.equal(session.enable(), true);
+  assert.deepEqual(session.requestSeek(first, { timedRange: { start: 12, end: 13 } }), {
+    kind: "timed-fragment",
+    target: 12,
+  });
+  assert.deepEqual(mediaController.calls.at(-1), ["seek", 12]);
+});
+
 test("seek keeps the existing loaded source and playback state", async () => {
   const mediaController = createFakeMediaController();
   const session = createMediaReviewSession({

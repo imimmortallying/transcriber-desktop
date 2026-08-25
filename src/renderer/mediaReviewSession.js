@@ -4,7 +4,10 @@
   function createSeekResolver({ resolve } = {}) {
     const strategy = typeof resolve === "function"
       ? resolve
-      : ({ paragraph, transcriptSync }) => {
+      : ({ paragraph, timedRange, transcriptSync }) => {
+        if (Number.isFinite(timedRange?.start)) {
+          return { kind: "timed-fragment", target: timedRange.start };
+        }
         const target = transcriptSync.seekTarget(paragraph);
         return Number.isFinite(target) ? { kind: "first-referenced-segment", target } : null;
       };
@@ -122,11 +125,11 @@
       notify();
     }
 
-    function requestSeek(paragraph) {
+    function requestSeek(paragraph, context = {}) {
       if (!enabled) {
         return null;
       }
-      const intent = seekResolver.resolve({ paragraph, transcriptSync });
+      const intent = seekResolver.resolve({ paragraph, transcriptSync, ...context });
       if (!intent) {
         return null;
       }
@@ -135,7 +138,7 @@
     }
 
     return {
-      canSeek: (paragraph) => Boolean(enabled && seekResolver.resolve({ paragraph, transcriptSync })),
+      canSeek: (paragraph, context = {}) => Boolean(enabled && seekResolver.resolve({ paragraph, transcriptSync, ...context })),
       disable,
       dispose() {
         disable();

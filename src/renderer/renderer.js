@@ -125,6 +125,7 @@ let projectRevision = 0;
 let toastTimerId = null;
 let typingTimerId = null;
 let typingContext = null;
+let pendingTextEdit = null;
 let compositionState = null;
 let compositionCommitTimerId = null;
 let lastDocumentSelection = null;
@@ -137,16 +138,20 @@ const editorHistory = window.EditorHistory.createEditorHistory();
 const { TYPING_IDLE_MS, createTypingPlan } = window.EditorTyping;
 const {
   buildBaselineParagraphs,
+  deriveTextReplace,
+  mapTemporalCoverage,
   mergeTiming,
   migrateProjectProvenance,
   normalizeTiming,
-  rescaleTiming: rescaleTranscriptTiming,
   sanitizeTiming,
   splitTiming: splitTranscriptTiming,
 } = window.TranscriptSync;
 const transcriptSync = window.TranscriptSync.createTranscriptSync({
   getBaselineSegments: () => recognizedSegments,
   getParagraphs: () => paragraphs,
+});
+const timedTextPresentation = window.TimedTextPresentation.createTimedTextPresentation({
+  editor,
 });
 let mediaController = null;
 let mediaReviewSession = null;
@@ -475,6 +480,7 @@ function clearEditorHistory() {
   clearTypingTimer();
   clearCompositionCommitTimer();
   typingContext = null;
+  pendingTextEdit = null;
   compositionState = null;
   lastDocumentSelection = null;
   editorHistory.clear();
@@ -484,6 +490,7 @@ function initializeEditorHistory() {
   clearTypingTimer();
   clearCompositionCommitTimer();
   typingContext = null;
+  pendingTextEdit = null;
   compositionState = null;
   const selection = captureDocumentSelection();
   lastDocumentSelection = selection;
@@ -1131,6 +1138,7 @@ function disposeMediaReviewSession() {
   mediaReviewSession = null;
   mediaController = null;
   mediaReviewSnapshot = createEmptyMediaReviewSnapshot();
+  timedTextPresentation.clear();
 }
 
 function resetMediaReviewForDocument() {
@@ -1144,19 +1152,58 @@ function setMediaReviewSource(nextSource) {
 }
 
 function applyMediaReviewHighlight() {
-  const activeIndications = new Map((mediaReviewSnapshot.enabled ? mediaReviewSnapshot.activeIndications : [])
-    .map((indication) => [indication.paragraphId, indication]));
-  editor.querySelectorAll(".document-paragraph").forEach((paragraphElement) => {
-    const paragraphId = Number(paragraphElement.querySelector(".document-text")?.dataset.paragraphId);
-    const indication = activeIndications.get(paragraphId);
-    paragraphElement.classList.toggle("is-media-review-active", Boolean(indication));
-    if (indication) {
-      paragraphElement.dataset.mediaReviewActiveRange = `[${formatTimecode(indication.start)}–${formatTimecode(indication.end)}]`;
-    } else {
-      delete paragraphElement.dataset.mediaReviewActiveRange;
-    }
-  });
+  timedTextPresentation.render(mediaReviewSnapshot);
 }
+
+function textOffsetAtPointer(textElement, clientX, clientY) {
+  const position = document.caretPositionFromPoint?.(clientX, clientY);
+  const range = position
+    ? { startContainer: position.offsetNode, startOffset: position.offset }
+    : document.caretRangeFromPoint?.(clientX, clientY);
+  if (!range || !textElement.contains(range.startContainer)) {
+    return null;
+  }
+  const before = document.createRange();
+  before.selectNodeContents(textElement);
+  before.setEnd(range.startContainer, range.startOffset);
+  return before.toString().length;
+}
+
+function resolveContextualMediaFragment(event) {
+  if (!mediaReviewSnapshot.enabled) {
+    return null;
+  }
+  const textElement = event.target.closest?.(".document-text");
+  if (!textElement || !textElement.isContentEditable || !editor.contains(textElement)) {
+    return null;
+  }
+  const offset = textOffsetAtPointer(textElement, event.clientX, event.clientY);
+  const paragraph = getParagraph(Number(textElement.dataset.paragraphId));
+  if (offset === null || !paragraph) {
+    return null;
+  }
+  const fragment = window.TimedTextPresentation.resolveFragment(
+    paragraph,
+    transcriptSync.timedRanges(paragraph),
+    offset,
+  );
+  return fragment && mediaReviewSession?.canSeek(paragraph, { timedRange: fragment.timedRange })
+    ? fragment
+    : null;
+}
+
+editor.addEventListener("contextmenu", async (event) => {
+  const textElement = event.target.closest?.(".document-text");
+  if (!textElement || !textElement.isContentEditable || !editor.contains(textElement)) {
+    return;
+  }
+  event.preventDefault();
+  const fragment = resolveContextualMediaFragment(event);
+  const action = await window.asr.showTranscriptContextMenu(Boolean(fragment));
+  if (action === "seek-to-media" && fragment) {
+    mediaReviewSession?.requestSeek(fragment.paragraph, { timedRange: fragment.timedRange });
+  }
+});
 
 function renderMediaReview() {
   const snapshot = mediaReviewSnapshot;
@@ -1697,15 +1744,52 @@ function syncStart(paragraph, fallbackStart = paragraph.start) {
   }
 }
 
-function rescaleTiming(paragraph, nextText) {
-  const previousLength = paragraph.text.length;
-  if (!previousLength || previousLength === nextText.length) {
-    paragraph.text = nextText;
+function capturePendingTextEdit(paragraph, inputType) {
+  const selection = captureDocumentSelection();
+  if (!selection
+    || selection.anchor.paragraphId !== paragraph.id
+    || selection.focus.paragraphId !== paragraph.id) {
+    pendingTextEdit = null;
     return;
   }
+  let from = Math.min(selection.anchor.offset, selection.focus.offset);
+  let to = Math.max(selection.anchor.offset, selection.focus.offset);
+  if (from === to && inputType === "deleteContentBackward") {
+    from = Math.max(0, from - 1);
+  } else if (from === to && inputType === "deleteContentForward") {
+    to = Math.min(paragraph.text.length, to + 1);
+  }
+  pendingTextEdit = {
+    paragraphId: paragraph.id,
+    textBefore: paragraph.text,
+    from,
+    to,
+  };
+}
 
-  paragraph.timing = rescaleTranscriptTiming(paragraph.timing, previousLength, nextText.length);
+function resolveTextEdit(paragraph, nextText) {
+  const pending = pendingTextEdit;
+  pendingTextEdit = null;
+  if (pending?.paragraphId === paragraph.id && pending.textBefore === paragraph.text) {
+    const suffixLength = paragraph.text.length - pending.to;
+    const insertedEnd = nextText.length - suffixLength;
+    if (insertedEnd >= pending.from
+      && paragraph.text.slice(0, pending.from) === nextText.slice(0, pending.from)
+      && paragraph.text.slice(pending.to) === nextText.slice(insertedEnd)) {
+      return { from: pending.from, to: pending.to, insertedText: nextText.slice(pending.from, insertedEnd) };
+    }
+  }
+  return deriveTextReplace(paragraph.text, nextText);
+}
+
+function applyTextEditCoverage(paragraph, nextText, replace = resolveTextEdit(paragraph, nextText)) {
+  if (paragraph.text === nextText) {
+    return false;
+  }
+  paragraph.timing = mapTemporalCoverage(paragraph.timing, { ...replace, text: paragraph.text });
   paragraph.text = nextText;
+  syncStart(paragraph, null);
+  return true;
 }
 
 function splitParagraph() {
@@ -1808,6 +1892,7 @@ function handleDocumentBeforeInput(event, paragraph) {
   if (compositionState || event.isComposing) {
     return;
   }
+  capturePendingTextEdit(paragraph, event.inputType);
   beginTypingTransaction(paragraph, event);
 }
 
@@ -1815,7 +1900,7 @@ function handleDocumentInput(event, paragraph, textElement) {
   if (compositionState || event.isComposing) {
     return;
   }
-  rescaleTiming(paragraph, textElement.textContent || "");
+  applyTextEditCoverage(paragraph, textElement.textContent || "");
   markProjectDirty();
   const selection = captureDocumentSelection() || lastDocumentSelection;
   if (typingContext) {
@@ -1831,9 +1916,11 @@ function handleDocumentInput(event, paragraph, textElement) {
 
 function handleCompositionStart(paragraph, textElement) {
   finishPendingTyping();
+  pendingTextEdit = null;
   compositionState = {
     paragraphId: paragraph.id,
     textElement,
+    textBefore: paragraph.text,
     stateBefore: JSON.stringify(captureEditorState()),
   };
 }
@@ -1851,7 +1938,10 @@ function handleCompositionEnd() {
     if (!paragraph || !composition.textElement.isConnected) {
       return;
     }
-    rescaleTiming(paragraph, composition.textElement.textContent || "");
+    applyTextEditCoverage(paragraph, composition.textElement.textContent || "", deriveTextReplace(
+      composition.textBefore,
+      composition.textElement.textContent || "",
+    ));
     const stateAfter = captureEditorState();
     const selection = captureDocumentSelection() || lastDocumentSelection;
     lastDocumentSelection = selection;
@@ -1979,19 +2069,6 @@ function renderEditor() {
         paragraphElement.append(popover);
       }
 
-      if (mediaReviewSnapshot.enabled && mediaReviewSession?.canSeek(paragraph)) {
-        const seekToMediaButton = document.createElement("button");
-        seekToMediaButton.className = "paragraph-media-seek secondary-button";
-        seekToMediaButton.type = "button";
-        seekToMediaButton.disabled = isRunning;
-        seekToMediaButton.textContent = "К записи";
-        seekToMediaButton.addEventListener("click", () => {
-          if (!mediaReviewSession?.requestSeek(paragraph)) {
-            showToast("Для этой реплики нет связи с записью.");
-          }
-        });
-        content.append(seekToMediaButton);
-      }
     }
     content.append(textElement);
     paragraphElement.append(timecode, content);
