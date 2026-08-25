@@ -53,8 +53,12 @@ Python-пайплайна — в `docs/recognition/module.md`; правила и
 попадают в packaged-ресурсы вместе со всем каталогом `pipeline/asr_pipeline`.
 Media Review v1 доступен только по явному действию для текущей расшифровки:
 он даёт playback и segment-level indication, не меняя autosave/history.
-Автопрокрутка, word-level highlighting, final layout и другие interaction
-patterns остаются открытыми вопросами в `docs/product/module.md`.
+Включённый audio review (и video со скрытым изображением) использует компактную
+playback bar в единой оболочке документа. На достаточной ширине видимое video
+добавляет ограниченную боковую колонку, не сужая обычную область текста; на
+узкой ширине CSS возвращает media перед transcript в естественный document flow.
+Автопрокрутка, word-level highlighting и другие interaction patterns остаются
+открытыми вопросами в `docs/product/module.md`.
 
 ## Устройство
 

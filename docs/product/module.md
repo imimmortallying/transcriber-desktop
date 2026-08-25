@@ -130,8 +130,18 @@ play/pause, review enabled, active indication и video visibility исчезаю
 использует все `activeAt` parts и допускает несколько спокойных indication
 одновременно. Для неразделённого baseline paragraph adapter показывает active
 exact segment range, не меняя contenteditable text и не заявляя word precision.
-Minimal player/video presentation — временный UI, без
-autoscroll, follow mode, word highlighting или закреплённого layout.
+Audio и video со скрытым изображением используют тот же compact
+`MediaTransport` под toolbar. `DocumentShell` — единая оболочка toolbar и
+workspace с общими внешними границами. На достаточно широком viewport видимое
+video расширяет AppContent и добавляет bounded sticky MediaPane рядом с
+transcript: extra width получает video, а transcript остаётся удобным для
+редактирования. На узкой ширине CSS возвращает простой stacked media →
+transcript в естественном document flow с одним vertical scroll; MediaTransport
+переезжает вместе с presentation, не меняя playback implementation. Visibility
+и responsive relayout — presentation state: они не re-authorize source, не пересоздают session
+и не останавливают playback. Это базовая spatial model, но не фиксирует будущий
+набор controls или размеры panel; autoscroll, follow mode и word highlighting
+по-прежнему не реализованы.
 
 Для audio достаточно playback controls. Для video изображение — дополнительное
 доступное представление: оно может быть одновременно видно с transcript и

@@ -27,7 +27,7 @@
   --radius-pill: 12px;
   --shadow-menu: 0 4px 12px rgb(23 32 51 / 18%);
   --shadow-dialog: 0 16px 48px rgb(23 32 51 / 24%);
-  --content-width: 920px;
+  --content-width: 960px;
   --button-padding: 10px 16px;
   color: var(--color-text);
   font-family: "Segoe UI", sans-serif;
@@ -38,12 +38,16 @@ body {
   margin: 0;
 }
 
-main {
+main.app-content {
   box-sizing: border-box;
   max-width: var(--content-width);
   min-height: 100vh;
   margin: 0 auto;
   padding: var(--space-10) var(--space-8);
+}
+
+main.app-content:has(#document-view[data-review-layout="video"]) {
+  max-width: 1440px;
 }
 
 .media-drop-overlay {
@@ -649,6 +653,20 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.media-review-workspace {
+  min-width: 0;
+}
+
+.media-review-workspace[data-review-layout="video"] {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "media"
+    "transcript";
+  gap: var(--space-3);
+}
+
+.media-transport-slot,
 .media-review {
   display: grid;
   gap: var(--space-3);
@@ -660,7 +678,8 @@ button:disabled {
 }
 
 .media-review[hidden],
-.media-review-controls[hidden] {
+.media-review-controls[hidden],
+.media-transport-slot[hidden] {
   display: none !important;
 }
 
@@ -685,9 +704,21 @@ button:disabled {
 
 .media-review-presentation video {
   display: block;
+  inline-size: 100%;
   max-inline-size: 100%;
+  max-block-size: min(520px, calc(100dvh - 300px));
   block-size: auto;
+  object-fit: contain;
   background: #000;
+}
+
+.media-review-workspace[data-review-layout="video"] .editor {
+  grid-area: transcript;
+}
+
+.media-review-workspace[data-review-layout="video"] .media-review {
+  grid-area: media;
+  margin: 0;
 }
 
 .speaker-control {
@@ -783,7 +814,35 @@ button:disabled {
   content: attr(data-placeholder);
 }
 
+@media (min-width: 901px) {
+  .media-transport-slot:not([hidden]) {
+    position: sticky;
+    z-index: 1;
+    top: var(--space-3);
+  }
+}
+
+@media (min-width: 1360px) {
+  .media-review-workspace[data-review-layout="video"] {
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
+    grid-template-areas: "transcript media";
+    gap: var(--space-5);
+  }
+
+  .media-review-workspace[data-review-layout="video"] .media-review {
+    position: sticky;
+    z-index: 1;
+    top: var(--space-3);
+    align-self: start;
+  }
+
+  .media-review-workspace[data-review-layout="video"] .media-review-presentation video {
+    max-block-size: min(520px, calc(100dvh - 280px));
+  }
+}
+
 @media (max-width: 700px) {
+
   .document-paragraph {
     grid-template-columns: 1fr;
     gap: 2px;

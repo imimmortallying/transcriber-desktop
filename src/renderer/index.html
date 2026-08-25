@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main>
+    <main class="app-content">
       <header class="app-header">
         <details id="more-menu" class="more-menu">
           <summary>Ещё</summary>
@@ -19,7 +19,7 @@
         </details>
       </header>
 
-      <section id="source-view">
+      <section id="source-view" class="file-bar">
         <section class="controls" aria-label="Выбор файла">
           <div class="action-group">
             <div class="action-group-actions">
@@ -95,8 +95,8 @@
         <button id="reveal-support-report" class="secondary-button" type="button">Открыть папку с отчётом</button>
       </dialog>
 
-      <section id="document-view" class="document-view" aria-label="Расшифровка" hidden>
-        <div class="document-actions">
+      <section id="document-view" class="document-view document-shell" aria-label="Расшифровка" data-review-layout="inactive" hidden>
+        <div class="document-actions document-toolbar">
           <button id="copy-text" class="secondary-button" type="button" disabled>Копировать</button>
           <button id="save" class="secondary-button" type="button" disabled>Сохранить .txt</button>
           <output id="save-status" class="save-status" aria-live="polite"></output>
@@ -149,23 +149,29 @@
             </div>
           </div>
         </dialog>
-        <section id="media-review" class="media-review" aria-label="Проверка по записи" hidden>
-          <div class="media-review-header">
-            <strong>Проверка по записи</strong>
-            <button id="disable-media-review" class="secondary-button" type="button">Скрыть</button>
+        <div id="media-transport-slot" class="media-transport-slot" hidden>
+          <div id="media-review-header" class="media-review-header">
+              <strong>Проверка по записи</strong>
+              <button id="disable-media-review" class="secondary-button" type="button">Скрыть</button>
           </div>
           <p id="media-review-status" class="hint" aria-live="polite"></p>
-          <div id="media-review-controls" class="media-review-controls" hidden>
+          <div id="media-review-controls" class="media-review-controls media-transport" hidden>
             <button id="media-review-play" class="secondary-button" type="button">Воспроизвести</button>
             <output id="media-review-time" class="media-review-time">00:00 / --:--</output>
             <input id="media-review-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="Позиция воспроизведения" />
             <button id="toggle-media-video" class="secondary-button" type="button" hidden>Скрыть видео</button>
           </div>
-          <div id="media-review-presentation" class="media-review-presentation" hidden></div>
           <button id="relink-media-source" class="secondary-button" type="button" hidden>Указать исходный файл</button>
-        </section>
-        <div id="editor" class="editor" aria-live="polite">
-          <p class="editor-placeholder">Здесь появится расшифровка.</p>
+        </div>
+        <div id="media-review-workspace" class="media-review-workspace document-workspace" data-review-layout="inactive">
+          <div id="editor" class="editor transcript-pane" aria-live="polite">
+            <p class="editor-placeholder">Здесь появится расшифровка.</p>
+          </div>
+          <section id="media-review" class="media-review media-pane" aria-label="Проверка по записи" hidden>
+            <div id="media-pane-header-slot"></div>
+            <div id="media-review-presentation" class="media-review-presentation" hidden></div>
+            <div id="media-pane-transport-slot"></div>
+          </section>
         </div>
       </section>
     </main>

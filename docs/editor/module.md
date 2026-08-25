@@ -108,7 +108,7 @@ Progressive disclosure не создаёт второй документ или 
 простой transcript и media-assisted review используют те же logical document
 state, пользовательские правки, autosave/persistence lifecycle и исходный ASR
 baseline. Проверка по источнику по умолчанию выключена: только явное действие
-открывает её временный минимальный интерфейс и authorizes playback source. При
+открывает её временный review workspace и authorizes playback source. При
 выключенной проверке нет player, playback-driven indication или text→media action.
 `TranscriptSync` — чистый слой без DOM/player: он разрешает `sourceSegmentRef`
 в exact ranges baseline, возвращает все active transcript parts для времени и
@@ -132,7 +132,16 @@ Highlight policy представляет все active parts, поэтому н
 показывает текущий exact ASR segment range рядом с спокойной active indication,
 не меняя contenteditable text DOM: связь символов внутри segment остаётся
 approximate. Audio воспроизводится без изображения; video использует тот же
-contract и может временно показывать/скрывать изображение. Seekbar передаёт
+contract и может временно показывать/скрывать изображение. Для audio и скрытого
+video controls остаются в компактной playback bar. `DocumentShell` остаётся
+единой card-оболочкой: toolbar и workspace имеют общие внешние границы. При
+видимом video CSS Grid добавляет к transcript ограниченную sticky side column;
+на узкой ширине media стоит перед transcript в естественном stacked document
+flow с одним vertical scroll. Один и тот же `MediaTransport` перемещается между
+slot под toolbar и MediaPane, не меняя playback state. Это только presentation
+слоя: смена ширины или visibility не пересоздаёт session/source и
+не останавливает playback.
+Seekbar передаёт
 clamped target только в текущую session → controller → `HTMLMediaElement.currentTime`;
 он не reloads source и сохраняет playing/paused state. Во время drag transient
 scrubbing state удерживает thumb от playback `timeupdate`, после seek UI снова

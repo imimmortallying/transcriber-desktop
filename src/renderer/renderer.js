@@ -53,8 +53,11 @@ const closeSupportReportButton = document.querySelector("#close-support-report")
 const recognitionProgress = document.querySelector("#recognition-progress");
 const recognitionProgressStage = document.querySelector("#recognition-progress-stage");
 const recognitionElapsed = document.querySelector("#recognition-elapsed");
+const mediaTransportSlot = document.querySelector("#media-transport-slot");
+const mediaReviewWorkspace = document.querySelector("#media-review-workspace");
 const editor = document.querySelector("#editor");
 const mediaReview = document.querySelector("#media-review");
+const mediaReviewHeader = document.querySelector("#media-review-header");
 const disableMediaReviewButton = document.querySelector("#disable-media-review");
 const mediaReviewStatus = document.querySelector("#media-review-status");
 const mediaReviewControls = document.querySelector("#media-review-controls");
@@ -62,6 +65,8 @@ const mediaReviewPlayButton = document.querySelector("#media-review-play");
 const mediaReviewTime = document.querySelector("#media-review-time");
 const mediaReviewSeek = document.querySelector("#media-review-seek");
 const mediaReviewPresentation = document.querySelector("#media-review-presentation");
+const mediaPaneHeaderSlot = document.querySelector("#media-pane-header-slot");
+const mediaPaneTransportSlot = document.querySelector("#media-pane-transport-slot");
 const toggleMediaVideoButton = document.querySelector("#toggle-media-video");
 const relinkMediaSourceButton = document.querySelector("#relink-media-source");
 const clientVersion = document.querySelector("#client-version");
@@ -1159,7 +1164,22 @@ function renderMediaReview() {
   const available = source?.status === "available";
   const reviewAvailable = snapshot.enabled && available;
   const playbackError = Boolean(snapshot.media.hasError);
-  mediaReview.hidden = !mediaReviewOpen;
+  const useVideoLayout = reviewAvailable
+    && snapshot.media.sourceKind === "video"
+    && snapshot.videoVisible;
+  const reviewLayout = mediaReviewOpen
+    ? (useVideoLayout ? "video" : "compact")
+    : "inactive";
+  mediaReviewWorkspace.dataset.reviewLayout = reviewLayout;
+  documentView.dataset.reviewLayout = reviewLayout;
+  if (useVideoLayout) {
+    mediaPaneHeaderSlot.append(mediaReviewHeader, mediaReviewStatus);
+    mediaPaneTransportSlot.append(mediaReviewControls, relinkMediaSourceButton);
+  } else {
+    mediaTransportSlot.append(mediaReviewHeader, mediaReviewStatus, mediaReviewControls, relinkMediaSourceButton);
+  }
+  mediaTransportSlot.hidden = !mediaReviewOpen || useVideoLayout;
+  mediaReview.hidden = !useVideoLayout;
   toggleMediaReviewButton.setAttribute("aria-pressed", String(mediaReviewOpen));
   toggleMediaReviewButton.textContent = mediaReviewOpen ? "Закрыть проверку по записи" : "Проверка по записи";
   mediaReviewControls.hidden = !reviewAvailable;
