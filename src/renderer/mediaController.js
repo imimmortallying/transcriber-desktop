@@ -9,6 +9,10 @@
   function createMediaController({ documentRef = document } = {}) {
     let mediaElement = null;
     let source = null;
+    let playbackIntent = null;
+    let playbackRequestId = 0;
+    let mediaGeneration = 0;
+    let playbackQueue = Promise.resolve();
     const listeners = new Set();
 
     function emit() {
@@ -36,6 +40,48 @@
       return mediaElement;
     }
 
+    function cancelQueuedPlayback() {
+      playbackIntent = null;
+      playbackRequestId += 1;
+      mediaGeneration += 1;
+      playbackQueue = Promise.resolve();
+    }
+
+    function queuePlaybackState(nextState) {
+      if (!mediaElement) {
+        return Promise.reject(new Error("Media source is not loaded."));
+      }
+      const requestId = ++playbackRequestId;
+      const generation = mediaGeneration;
+      playbackIntent = { requestId, state: nextState };
+      const command = playbackQueue.catch(() => undefined).then(async () => {
+        if (generation !== mediaGeneration) {
+          return snapshot();
+        }
+        if (nextState === "playing") {
+          await mediaElement.play();
+        } else {
+          mediaElement.pause();
+        }
+        emit();
+        return snapshot();
+      });
+      playbackQueue = command;
+      command.then(
+        () => {
+          if (playbackIntent?.requestId === requestId) {
+            playbackIntent = null;
+          }
+        },
+        () => {
+          if (playbackIntent?.requestId === requestId) {
+            playbackIntent = null;
+          }
+        },
+      );
+      return command;
+    }
+
     function snapshot() {
       return {
         currentTime: Number.isFinite(mediaElement?.currentTime) ? mediaElement.currentTime : 0,
@@ -55,6 +101,7 @@
     }
 
     function load(nextSource) {
+      cancelQueuedPlayback();
       if (!nextSource || nextSource.status !== "available" || !nextSource.url) {
         source = null;
         mediaElement?.pause();
@@ -76,14 +123,11 @@
       getSnapshot: snapshot,
       load,
       pause: () => {
+        cancelQueuedPlayback();
         mediaElement?.pause();
         emit();
       },
-      play: () => mediaElement
-        ? mediaElement.play().then(() => {
-          emit();
-        })
-        : Promise.reject(new Error("Media source is not loaded.")),
+      play: () => queuePlaybackState("playing"),
       probe,
       seek: (seconds) => {
         if (!mediaElement || !Number.isFinite(seconds)) {
@@ -97,6 +141,10 @@
           : Math.min(duration, Math.max(0, seconds));
         emit();
         return snapshot();
+      },
+      togglePlayback: () => {
+        const currentState = playbackIntent?.state || snapshot().state;
+        return queuePlaybackState(currentState === "playing" ? "paused" : "playing");
       },
       subscribe(listener) {
         listeners.add(listener);

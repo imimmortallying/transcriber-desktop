@@ -34,6 +34,9 @@ test("renderer obtains the running Client version from Electron main process", a
   assert.match(preload, /onUpdateCommitted: \(callback\) =>/);
   assert.match(preload, /revealSupportReport: \(reportPath\) => ipcRenderer\.invoke\("support:reveal-report", reportPath\)/);
   assert.match(index, /id="client-version"/);
+  assert.match(index, /<details id="client-runtime-details"/);
+  assert.match(index, /<summary>О приложении<\/summary>/);
+  assert.match(index, /id="client-runtime-details-output"/);
   assert.match(index, /id="dev-editor-trace"[^>]*hidden/);
   assert.match(index, /id="capture-dev-editor-trace"/);
   assert.match(index, /id="clear-dev-editor-trace"/);
@@ -41,7 +44,7 @@ test("renderer obtains the running Client version from Electron main process", a
   assert.match(index, /<script src="editorHistory\.js"><\/script>/);
   assert.match(index, /<script src="editorTyping\.js"><\/script>/);
   assert.match(main, /const metadata = getRunListMetadata\(path\.basename\(runDirectory\), runInfo\.mtimeMs\);/);
-  assert.match(renderer, /const identity = await window\.asr\.getClientIdentity\(\);[\s\S]*Client v\$\{identity\.version\} · \$\{identity\.mode\}/);
+  assert.match(renderer, /const identity = await window\.asr\.getClientIdentity\(\);[\s\S]*Версия \$\{identity\.version\}[\s\S]*Режим: \$\{identity\.mode\}[\s\S]*Путь к Client/);
   assert.match(renderer, /enableDevDiagnostics\(identity\.mode === "dev"\)/);
   assert.match(renderer, /function traceEditorSnapshot\(label, details = \{\}\)/);
   assert.match(renderer, /isTrusted: event\.isTrusted[\s\S]*controlState: event\.getModifierState\("Control"\)/);
@@ -62,7 +65,12 @@ test("renderer keeps one stable document for reading and editing", async () => {
 
   assert.match(index, /id="source-view"/);
   assert.match(index, /id="document-view"[^>]*hidden/);
-  assert.match(index, /<details id="document-more"/);
+  assert.doesNotMatch(index, /<details id="document-more"/);
+  assert.doesNotMatch(index, /<details id="more-menu"/);
+  assert.match(index, /id="document-toolbar-actions"/);
+  assert.match(index, /id="toggle-media-review"[^>]*aria-label="Проверка по записи"[^>]*title="Проверка по записи"/);
+  assert.match(index, /id="open-saved"[^>]*aria-label="Мои расшифровки"[^>]*title="Мои расшифровки"/);
+  assert.match(index, /id="toggle-settings"[^>]*aria-label="Настройки"[^>]*title="Настройки"/);
   assert.match(index, /id="open-speakers"/);
   assert.match(index, /id="saved-runs-guidance"/);
   assert.match(index, /Управлять говорящими/);
@@ -70,6 +78,7 @@ test("renderer keeps one stable document for reading and editing", async () => {
   assert.match(index, /<dialog id="saved-runs"/);
   assert.match(index, /id="close-settings"/);
   assert.match(index, /id="close-saved-runs"/);
+  assert.match(index, /<button id="close-saved-runs" class="icon-button secondary-button dialog-close"[^>]*aria-label="Закрыть сохранённые расшифровки"[^>]*title="Закрыть сохранённые расшифровки"/);
   assert.match(index, /Мои расшифровки/);
   assert.match(renderer, /return \{ paragraphs, speakers, readOnly: false \};/);
   assert.match(renderer, /openSpeakersButton\.addEventListener\("click",[\s\S]*openDialog\(editorToolbar, \{ initialFocus: speakerNameInput \}\)/);
@@ -84,7 +93,7 @@ test("renderer keeps one stable document for reading and editing", async () => {
   assert.match(index, /id="editor-actions-dialog"/);
   assert.match(renderer, /applyOpenedSavedRun\(result\);[\s\S]*setSavedRunsVisible\(false\)/);
   assert.match(renderer, /function formatSourceName\(filePath\)/);
-  assert.match(renderer, /function renderDocumentVisibility\(visibleDocument\)[\s\S]*documentView\.hidden = !text/);
+  assert.match(renderer, /function renderDocumentVisibility\(visibleDocument\)[\s\S]*const documentVisible = Boolean\(text\);[\s\S]*documentView\.hidden = !documentVisible;[\s\S]*documentToolbarActions\.prepend\(toggleMediaReviewButton, openSavedButton, toggleSettingsButton\)/);
   assert.match(index, /id="media-drop-hint" class="media-drop-hint">или перетащите аудио \/ видео в окно/);
   assert.match(index, /<output id="file-name" hidden><\/output>/);
   assert.match(index, /id="media-drop-overlay"[^>]*hidden/);
@@ -165,7 +174,7 @@ test("renderer keeps one stable document for reading and editing", async () => {
   assert.match(styles, /\.app-dialog \{/);
   assert.match(styles, /\.document-view \{/);
   assert.match(styles, /grid-template-columns: max-content minmax\(0, 1fr\);/);
-  assert.match(styles, /\.editor-more-actions \{/);
+  assert.match(styles, /\.toolbar-icon-actions \{/);
   assert.match(styles, /\.recognition-progress\[hidden\] \{/);
   assert.match(styles, /\.media-drop-overlay \{[\s\S]*position: fixed;[\s\S]*pointer-events: none;/);
 });
@@ -184,9 +193,9 @@ test("dialog polish preserves clear transcript and speaker actions", async () =>
   assert.match(index, /<button id="reset-recognized" class="danger-button"[^>]*>Восстановить исходный текст<\/button>/);
   assert.match(index, /<h3>Сохранённая расшифровка<\/h3>/);
   assert.match(index, /<button id="delete-run" class="danger-button"[^>]*>Удалить расшифровку<\/button>/);
-  assert.match(index, /<button id="close-settings" class="secondary-button dialog-close"[^>]*>Закрыть<\/button>/);
-  assert.match(index, /<button id="close-speakers" class="secondary-button dialog-close"[^>]*>Закрыть<\/button>/);
-  assert.match(index, /<button id="close-editor-actions" class="secondary-button dialog-close"[^>]*>Закрыть<\/button>/);
+  assert.match(index, /<button id="close-settings" class="icon-button secondary-button dialog-close"[^>]*aria-label="Закрыть"[^>]*title="Закрыть"/);
+  assert.match(index, /<button id="close-speakers" class="icon-button secondary-button dialog-close"[^>]*aria-label="Закрыть"[^>]*title="Закрыть"/);
+  assert.match(index, /<button id="close-editor-actions" class="icon-button secondary-button dialog-close"[^>]*aria-label="Закрыть"[^>]*title="Закрыть"/);
   assert.match(index, /<div class="results-directory-actions">/);
 
   const speakerListRenderer = renderer.slice(

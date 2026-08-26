@@ -174,6 +174,17 @@ follow playback, word highlighting или layout contract. Перед
 на `t=1.0` и пропускает их через production normalization path. Этот тест не
 доказывает playback всех containers/codecs и не вводит word-level timing.
 
+Transport использует fixed-size Lucide icon buttons `-5 sec`, `Play/Pause` и
+`+5 sec`; skip передаёт clamped target через ту же session/controller boundary.
+Иконка Play/Pause следует фактическому `HTMLMediaElement.paused`, но её дочерний SVG
+заменяется только при смене Play/Pause state. Transport между compact и video slots
+перемещается только при смене layout, а не на каждом `timeupdate`: pointer target остаётся
+на месте между `pointerdown` и `click`. Controller последовательно исполняет rapid toggle intents, поэтому устаревший renderer snapshot не может
+повторно отправить play вместо pause. При enabled review вне editable и form
+controls `Space`, `ArrowLeft` и `ArrowRight` вызывают тот же toggle/skip;
+внутри `contenteditable`, `input`, `textarea` и `select` они остаются нативным
+вводом. Video не получает постоянного объясняющего текста о связи с документом.
+
 ## Проект правок
 
 После короткой паузы ввода правки автоматически записываются рядом с исходным

@@ -49,3 +49,58 @@ test("controller creates audio and video elements from the shared source contrac
   assert.equal(controller.getElement().tagName, "VIDEO");
   assert.equal(created.length, 2);
 });
+
+test("rapid toggles are serialized against the media element instead of a stale UI snapshot", async () => {
+  const calls = [];
+  const pendingPlays = [];
+  const documentRef = {
+    createElement(tagName) {
+      return {
+        tagName: tagName.toUpperCase(),
+        paused: true,
+        ended: false,
+        currentTime: 0,
+        duration: 30,
+        error: null,
+        addEventListener() {},
+        canPlayType: () => "probably",
+        load() {},
+        pause() {
+          calls.push("pause");
+          this.paused = true;
+        },
+        play() {
+          calls.push("play");
+          this.paused = false;
+          return new Promise((resolve) => pendingPlays.push(resolve));
+        },
+        removeAttribute() {},
+      };
+    },
+  };
+  const controller = createMediaController({ documentRef });
+  controller.load({ status: "available", sourceKind: "audio", url: "asr-media://audio/source", mimeType: "audio/wav" });
+
+  const first = controller.togglePlayback();
+  for (let index = 0; index < 4 && pendingPlays.length === 0; index += 1) {
+    await Promise.resolve();
+  }
+  assert.equal(pendingPlays.length, 1);
+  const second = controller.togglePlayback();
+  const third = controller.togglePlayback();
+  const fourth = controller.togglePlayback();
+
+  pendingPlays.shift()();
+  await first;
+  await second;
+  for (let index = 0; index < 4 && pendingPlays.length === 0; index += 1) {
+    await Promise.resolve();
+  }
+  assert.equal(pendingPlays.length, 1);
+  pendingPlays.shift()();
+  await third;
+  await fourth;
+
+  assert.deepEqual(calls, ["play", "pause", "play", "pause"]);
+  assert.equal(controller.getSnapshot().state, "paused");
+});

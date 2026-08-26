@@ -162,6 +162,9 @@
         listener(snapshot());
         return () => listeners.delete(listener);
       },
+      togglePlayback: () => enabled
+        ? mediaController.togglePlayback()
+        : Promise.reject(new Error("Media Review выключен.")),
     };
   }
 

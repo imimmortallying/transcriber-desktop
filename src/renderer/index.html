@@ -10,13 +10,14 @@
   <body>
     <main class="app-content">
       <header class="app-header">
-        <details id="more-menu" class="more-menu">
-          <summary>Ещё</summary>
-          <div class="more-menu-actions">
-            <button id="open-saved" class="secondary-button" type="button" aria-expanded="false" aria-controls="saved-runs">Мои расшифровки</button>
-            <button id="toggle-settings" class="secondary-button" type="button" aria-expanded="false" aria-controls="advanced-panel">Настройки</button>
-          </div>
-        </details>
+        <div id="app-toolbar-actions" class="toolbar-icon-actions">
+          <button id="open-saved" class="icon-button secondary-button" type="button" aria-label="Мои расшифровки" title="Мои расшифровки" aria-expanded="false" aria-controls="saved-runs">
+            <i data-lucide="history" aria-hidden="true"></i>
+          </button>
+          <button id="toggle-settings" class="icon-button secondary-button" type="button" aria-label="Настройки" title="Настройки" aria-expanded="false" aria-controls="advanced-panel">
+            <i data-lucide="settings" aria-hidden="true"></i>
+          </button>
+        </div>
       </header>
 
       <section id="source-view" class="file-bar">
@@ -42,7 +43,9 @@
       <dialog id="advanced-panel" class="app-dialog" aria-labelledby="advanced-title">
         <div class="dialog-heading">
           <h2 id="advanced-title">Настройки</h2>
-          <button id="close-settings" class="secondary-button dialog-close" type="button">Закрыть</button>
+          <button id="close-settings" class="icon-button secondary-button dialog-close" type="button" aria-label="Закрыть" title="Закрыть">
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
         </div>
         <div class="results-directory">
           <span class="results-directory-label">Папка результатов</span>
@@ -66,6 +69,10 @@
           <p id="update-status" class="hint">Обновление не подготовлено.</p>
         </details>
         <p id="client-version">Client</p>
+        <details id="client-runtime-details" class="client-runtime-details">
+          <summary>О приложении</summary>
+          <pre id="client-runtime-details-output" class="client-runtime-details-output">Загружаю технические сведения…</pre>
+        </details>
         <details id="dev-editor-trace" class="dev-editor-trace" hidden>
           <summary>Диагностика редактора (dev)</summary>
           <button id="capture-dev-editor-trace" class="secondary-button" type="button">Снять snapshot</button>
@@ -78,7 +85,9 @@
       <dialog id="saved-runs" class="app-dialog saved-runs" aria-labelledby="saved-runs-title">
         <div class="dialog-heading">
           <h2 id="saved-runs-title">Сохранённые прогоны</h2>
-          <button id="close-saved-runs" class="secondary-button" type="button">Назад</button>
+          <button id="close-saved-runs" class="icon-button secondary-button dialog-close" type="button" aria-label="Закрыть сохранённые расшифровки" title="Закрыть сохранённые расшифровки">
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
         </div>
         <p id="saved-runs-guidance" class="context-hint">Выберите сохранённую расшифровку.</p>
         <p id="saved-runs-empty" class="saved-runs-empty" hidden>Сохранённых прогонов нет.</p>
@@ -89,7 +98,9 @@
       <dialog id="support-report" class="app-dialog support-report" aria-live="polite" aria-labelledby="support-report-title">
         <div class="dialog-heading">
           <h2 id="support-report-title">Не удалось выполнить распознавание</h2>
-          <button id="close-support-report" class="secondary-button" type="button">Закрыть</button>
+          <button id="close-support-report" class="icon-button secondary-button dialog-close" type="button" aria-label="Закрыть" title="Закрыть">
+            <i data-lucide="x" aria-hidden="true"></i>
+          </button>
         </div>
         <p id="support-report-message"></p>
         <button id="reveal-support-report" class="secondary-button" type="button">Открыть папку с отчётом</button>
@@ -100,19 +111,24 @@
           <button id="copy-text" class="secondary-button" type="button" disabled>Копировать</button>
           <button id="save" class="secondary-button" type="button" disabled>Сохранить .txt</button>
           <output id="save-status" class="save-status" aria-live="polite"></output>
-          <details id="document-more" class="editor-more">
-            <summary>Ещё</summary>
-            <div class="editor-more-actions">
-              <button id="open-speakers" class="secondary-button" type="button" aria-haspopup="dialog" aria-controls="editor-toolbar">Управлять говорящими</button>
-              <button id="toggle-media-review" class="secondary-button" type="button" aria-pressed="false">Проверка по записи</button>
-              <button id="open-editor-actions" class="secondary-button" type="button" aria-haspopup="dialog" aria-controls="editor-actions-dialog">Управление документом</button>
-            </div>
-          </details>
+          <div id="document-toolbar-actions" class="toolbar-icon-actions">
+            <button id="open-speakers" class="icon-button secondary-button" type="button" aria-label="Управлять говорящими" title="Управлять говорящими" aria-haspopup="dialog" aria-controls="editor-toolbar">
+              <i data-lucide="users" aria-hidden="true"></i>
+            </button>
+            <button id="toggle-media-review" class="icon-button secondary-button" type="button" aria-label="Проверка по записи" title="Проверка по записи">
+              <i data-lucide="headphones" aria-hidden="true"></i>
+            </button>
+            <button id="open-editor-actions" class="icon-button secondary-button" type="button" aria-label="Управление документом" title="Управление документом" aria-haspopup="dialog" aria-controls="editor-actions-dialog">
+              <i data-lucide="sliders-horizontal" aria-hidden="true"></i>
+            </button>
+          </div>
         </div>
         <dialog id="editor-toolbar" class="app-dialog editor-dialog" aria-labelledby="speaker-tools-title">
           <div class="dialog-heading">
             <h2 id="speaker-tools-title">Говорящие</h2>
-            <button id="close-speakers" class="secondary-button dialog-close" type="button">Закрыть</button>
+            <button id="close-speakers" class="icon-button secondary-button dialog-close" type="button" aria-label="Закрыть" title="Закрыть">
+              <i data-lucide="x" aria-hidden="true"></i>
+            </button>
           </div>
           <p class="hint">Добавьте участников разговора и назначайте их репликам.</p>
           <div class="speaker-tools-content">
@@ -127,7 +143,9 @@
         <dialog id="editor-actions-dialog" class="app-dialog editor-dialog" aria-labelledby="editor-actions-title">
           <div class="dialog-heading">
             <h2 id="editor-actions-title">Управление расшифровкой</h2>
-            <button id="close-editor-actions" class="secondary-button dialog-close" type="button">Закрыть</button>
+            <button id="close-editor-actions" class="icon-button secondary-button dialog-close" type="button" aria-label="Закрыть" title="Закрыть">
+              <i data-lucide="x" aria-hidden="true"></i>
+            </button>
           </div>
           <div class="document-actions-section">
             <h3>Версия текста</h3>
@@ -152,11 +170,21 @@
         <div id="media-transport-slot" class="media-transport-slot" hidden>
           <div id="media-review-header" class="media-review-header">
               <strong>Проверка по записи</strong>
-              <button id="disable-media-review" class="secondary-button" type="button">Скрыть</button>
+              <button id="disable-media-review" class="icon-button secondary-button" type="button" aria-label="Закрыть проверку по записи" title="Закрыть проверку по записи">
+                <i data-lucide="x" aria-hidden="true"></i>
+              </button>
           </div>
           <p id="media-review-status" class="hint" aria-live="polite"></p>
           <div id="media-review-controls" class="media-review-controls media-transport" hidden>
-            <button id="media-review-play" class="secondary-button" type="button">Воспроизвести</button>
+            <button id="media-review-skip-back" class="icon-button secondary-button" type="button" aria-label="Назад на 5 секунд" title="Назад на 5 секунд">
+              <i data-lucide="skip-back" aria-hidden="true"></i>
+            </button>
+            <button id="media-review-play" class="icon-button secondary-button" type="button" aria-label="Воспроизвести" title="Воспроизвести">
+              <i data-lucide="play" aria-hidden="true"></i>
+            </button>
+            <button id="media-review-skip-forward" class="icon-button secondary-button" type="button" aria-label="Вперёд на 5 секунд" title="Вперёд на 5 секунд">
+              <i data-lucide="skip-forward" aria-hidden="true"></i>
+            </button>
             <output id="media-review-time" class="media-review-time">00:00 / --:--</output>
             <input id="media-review-seek" type="range" min="0" max="0" step="0.01" value="0" aria-label="Позиция воспроизведения" />
             <button id="toggle-media-video" class="secondary-button" type="button" hidden>Скрыть видео</button>
@@ -184,6 +212,7 @@
     <script src="transcriptSync.js"></script>
     <script src="mediaReviewSession.js"></script>
     <script src="timedTextPresentation.js"></script>
+    <script src="../../node_modules/lucide/dist/umd/lucide.js"></script>
     <script src="renderer.js"></script>
   </body>
 </html>

@@ -1,12 +1,12 @@
 const selectFileButton = document.querySelector("#select-file");
 const transcribeButton = document.querySelector("#transcribe");
 const mediaDropOverlay = document.querySelector("#media-drop-overlay");
-const moreMenu = document.querySelector("#more-menu");
+const appToolbarActions = document.querySelector("#app-toolbar-actions");
 const openSavedButton = document.querySelector("#open-saved");
 const toggleSettingsButton = document.querySelector("#toggle-settings");
 const mediaDropHint = document.querySelector("#media-drop-hint");
 const documentView = document.querySelector("#document-view");
-const documentMore = document.querySelector("#document-more");
+const documentToolbarActions = document.querySelector("#document-toolbar-actions");
 const openSpeakersButton = document.querySelector("#open-speakers");
 const toggleMediaReviewButton = document.querySelector("#toggle-media-review");
 const openEditorActionsButton = document.querySelector("#open-editor-actions");
@@ -61,7 +61,9 @@ const mediaReviewHeader = document.querySelector("#media-review-header");
 const disableMediaReviewButton = document.querySelector("#disable-media-review");
 const mediaReviewStatus = document.querySelector("#media-review-status");
 const mediaReviewControls = document.querySelector("#media-review-controls");
+const mediaReviewSkipBackButton = document.querySelector("#media-review-skip-back");
 const mediaReviewPlayButton = document.querySelector("#media-review-play");
+const mediaReviewSkipForwardButton = document.querySelector("#media-review-skip-forward");
 const mediaReviewTime = document.querySelector("#media-review-time");
 const mediaReviewSeek = document.querySelector("#media-review-seek");
 const mediaReviewPresentation = document.querySelector("#media-review-presentation");
@@ -70,6 +72,7 @@ const mediaPaneTransportSlot = document.querySelector("#media-pane-transport-slo
 const toggleMediaVideoButton = document.querySelector("#toggle-media-video");
 const relinkMediaSourceButton = document.querySelector("#relink-media-source");
 const clientVersion = document.querySelector("#client-version");
+const clientRuntimeDetailsOutput = document.querySelector("#client-runtime-details-output");
 const devEditorTrace = document.querySelector("#dev-editor-trace");
 const captureDevEditorTraceButton = document.querySelector("#capture-dev-editor-trace");
 const clearDevEditorTraceButton = document.querySelector("#clear-dev-editor-trace");
@@ -86,10 +89,8 @@ const modalDialogs = [
 const PROJECT_SCHEMA_VERSION = window.TranscriptSync.PROJECT_SCHEMA_VERSION;
 const AUTOSAVE_DELAY_MS = 1000;
 const TOAST_DURATION_MS = 5000;
-const ICON_PATHS = {
-  folder: ["M3 6h5l2 2h11v10H3z"],
-  trash: ["M4 7h16", "M10 11v6", "M14 11v6", "M6 7l1 14h10l1-14", "M9 7V4h6v3"],
-};
+
+window.lucide.createIcons({ attrs: { class: "icon", "aria-hidden": "true" } });
 
 let selectedFile = null;
 let mediaDragDepth = 0;
@@ -160,10 +161,12 @@ let mediaReviewSnapshot = createEmptyMediaReviewSnapshot();
 async function showClientVersion() {
   try {
     const identity = await window.asr.getClientIdentity();
-    clientVersion.textContent = `Client v${identity.version} · ${identity.mode}\n${identity.appPath}`;
+    clientVersion.textContent = `Версия ${identity.version}`;
+    clientRuntimeDetailsOutput.textContent = `Режим: ${identity.mode}\nПуть к Client:\n${identity.appPath}`;
     enableDevDiagnostics(identity.mode === "dev");
   } catch {
-    clientVersion.textContent = "Client version unavailable";
+    clientVersion.textContent = "Версия недоступна";
+    clientRuntimeDetailsOutput.textContent = "Не удалось загрузить технические сведения.";
   }
 }
 
@@ -795,7 +798,7 @@ function setRunning(running) {
   openSavedButton.disabled = running;
   toggleSettingsButton.disabled = running;
   openSpeakersButton.disabled = running || !sourceSegmentsPath || isShowingRecognized;
-  toggleMediaReviewButton.disabled = running || !sourceSegmentsPath || isShowingRecognized;
+  toggleMediaReviewButton.disabled = running || !sourceSegmentsPath || isShowingRecognized || mediaReviewOpen;
   selectResultsDirectoryButton.disabled = running;
   revealResultsDirectoryButton.disabled = running || !resultsDirectoryPath;
   const hasCleanText = Boolean(getCleanText(visibleDocument.paragraphs, visibleDocument.speakers));
@@ -978,7 +981,6 @@ toggleSettingsButton.addEventListener("click", () => {
   if (isRunning) {
     return;
   }
-  moreMenu.open = false;
   openDialog(advancedPanel);
 });
 
@@ -987,7 +989,6 @@ closeSettingsButton.addEventListener("click", () => closeDialog(advancedPanel));
 openSpeakersButton.addEventListener("click", () => {
   if (!isRunning && sourceSegmentsPath && !isShowingRecognized) {
     traceEditorSnapshot("speakers: before-open");
-    documentMore.open = false;
     openDialog(editorToolbar, { initialFocus: speakerNameInput });
   }
 });
@@ -996,7 +997,6 @@ closeSpeakersButton.addEventListener("click", () => closeDialog(editorToolbar));
 
 openEditorActionsButton.addEventListener("click", () => {
   if (!isRunning) {
-    documentMore.open = false;
     openDialog(editorActionsDialog);
   }
 });
@@ -1220,15 +1220,22 @@ function renderMediaReview() {
   mediaReviewWorkspace.dataset.reviewLayout = reviewLayout;
   documentView.dataset.reviewLayout = reviewLayout;
   if (useVideoLayout) {
-    mediaPaneHeaderSlot.append(mediaReviewHeader, mediaReviewStatus);
-    mediaPaneTransportSlot.append(mediaReviewControls, relinkMediaSourceButton);
-  } else {
+    if (mediaReviewHeader.parentElement !== mediaPaneHeaderSlot
+      || mediaReviewStatus.parentElement !== mediaPaneHeaderSlot) {
+      mediaPaneHeaderSlot.append(mediaReviewHeader, mediaReviewStatus);
+    }
+    if (mediaReviewControls.parentElement !== mediaPaneTransportSlot
+      || relinkMediaSourceButton.parentElement !== mediaPaneTransportSlot) {
+      mediaPaneTransportSlot.append(mediaReviewControls, relinkMediaSourceButton);
+    }
+  } else if (mediaReviewHeader.parentElement !== mediaTransportSlot
+    || mediaReviewStatus.parentElement !== mediaTransportSlot
+    || mediaReviewControls.parentElement !== mediaTransportSlot
+    || relinkMediaSourceButton.parentElement !== mediaTransportSlot) {
     mediaTransportSlot.append(mediaReviewHeader, mediaReviewStatus, mediaReviewControls, relinkMediaSourceButton);
   }
   mediaTransportSlot.hidden = !mediaReviewOpen || useVideoLayout;
   mediaReview.hidden = !useVideoLayout;
-  toggleMediaReviewButton.setAttribute("aria-pressed", String(mediaReviewOpen));
-  toggleMediaReviewButton.textContent = mediaReviewOpen ? "Закрыть проверку по записи" : "Проверка по записи";
   mediaReviewControls.hidden = !reviewAvailable;
   relinkMediaSourceButton.hidden = !mediaReviewOpen || (available && !playbackError);
   mediaReviewPresentation.hidden = true;
@@ -1257,9 +1264,16 @@ function renderMediaReview() {
   mediaReviewStatus.textContent = playbackError
     ? "Не удалось загрузить исходную запись. Можно указать файл повторно; текст останется доступен."
     : (media.sourceKind === "video"
-    ? "Видео и текст остаются независимыми представлениями одного документа."
+    ? ""
     : "Воспроизведение доступно только для проверки текущей расшифровки.");
-  mediaReviewPlayButton.textContent = media.state === "playing" ? "Пауза" : "Воспроизвести";
+  const isPlaying = media.state === "playing";
+  const playbackIconName = isPlaying ? "Pause" : "Play";
+  if (mediaReviewPlayButton.dataset.iconName !== playbackIconName) {
+    mediaReviewPlayButton.replaceChildren(createIcon(playbackIconName));
+    mediaReviewPlayButton.dataset.iconName = playbackIconName;
+  }
+  mediaReviewPlayButton.setAttribute("aria-label", isPlaying ? "Пауза" : "Воспроизвести");
+  mediaReviewPlayButton.title = isPlaying ? "Пауза" : "Воспроизвести";
   mediaReviewPlayButton.disabled = isRunning;
   const hasUsableDuration = Number.isFinite(media.duration) && media.duration > 0;
   if (mediaReviewPendingSeekTarget !== null
@@ -1274,6 +1288,8 @@ function renderMediaReview() {
     mediaReviewSeek.value = String(Math.min(media.currentTime, media.duration || 0));
   }
   mediaReviewSeek.disabled = isRunning || !hasUsableDuration;
+  mediaReviewSkipBackButton.disabled = isRunning || !hasUsableDuration;
+  mediaReviewSkipForwardButton.disabled = isRunning || !hasUsableDuration;
   toggleMediaVideoButton.hidden = media.sourceKind !== "video";
   toggleMediaVideoButton.disabled = isRunning;
   toggleMediaVideoButton.textContent = snapshot.videoVisible ? "Скрыть видео" : "Показать видео";
@@ -1316,16 +1332,7 @@ function formatRunDate(date) {
 }
 
 function createIcon(name) {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.classList.add("icon");
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  for (const pathData of ICON_PATHS[name]) {
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", pathData);
-    svg.append(path);
-  }
-  return svg;
+  return window.lucide.createElement(window.lucide[name], { class: "icon", "aria-hidden": "true" });
 }
 
 function updateActiveSavedRun() {
@@ -1367,14 +1374,14 @@ function renderSavedRuns(runs) {
     revealButton.type = "button";
     revealButton.setAttribute("aria-label", `Открыть папку прогона ${run.sourceName}`);
     revealButton.title = "Открыть в папке";
-    revealButton.append(createIcon("folder"));
+    revealButton.append(createIcon("FolderOpen"));
     revealButton.addEventListener("click", () => revealSavedRun(run.segmentsPath));
     const deleteButton = document.createElement("button");
     deleteButton.className = "icon-button danger-button";
     deleteButton.type = "button";
     deleteButton.setAttribute("aria-label", `Удалить прогон ${run.sourceName}`);
     deleteButton.title = "Удалить";
-    deleteButton.append(createIcon("trash"));
+    deleteButton.append(createIcon("Trash2"));
     deleteButton.addEventListener("click", () => deleteSavedRun(run.segmentsPath));
     actions.append(revealButton, deleteButton);
     item.append(openRunButton, actions);
@@ -1980,7 +1987,13 @@ function handleEditorKeydown(event) {
 
 function renderDocumentVisibility(visibleDocument) {
   const text = getCleanText(visibleDocument.paragraphs, visibleDocument.speakers);
-  documentView.hidden = !text;
+  const documentVisible = Boolean(text);
+  documentView.hidden = !documentVisible;
+  if (documentVisible) {
+    documentToolbarActions.prepend(toggleMediaReviewButton, openSavedButton, toggleSettingsButton);
+  } else {
+    appToolbarActions.append(openSavedButton, toggleSettingsButton);
+  }
 }
 
 function renderEditor() {
@@ -2368,7 +2381,6 @@ openSavedButton.addEventListener("click", async () => {
     return;
   }
 
-  moreMenu.open = false;
   setSavedRunsVisible(true);
   setRunning(true);
   clearToast();
@@ -2545,6 +2557,24 @@ function hasShortcutModifier(event) {
   return (event.ctrlKey || event.metaKey) && !event.altKey;
 }
 
+function isEditableOrFormControl(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  return (target instanceof HTMLElement && target.isContentEditable)
+    || Boolean(target.closest("input, textarea, select, button, [contenteditable]"));
+}
+
+function canUseMediaReviewShortcut(event) {
+  return mediaReviewSnapshot.enabled
+    && !isRunning
+    && !event.ctrlKey
+    && !event.metaKey
+    && !event.altKey
+    && !event.shiftKey
+    && !isEditableOrFormControl(event.target);
+}
+
 document.addEventListener("keydown", (event) => {
   if (event.isComposing || compositionState) {
     return;
@@ -2567,9 +2597,19 @@ document.addEventListener("keydown", (event) => {
       return;
     }
   }
-  if (event.key === "Escape") {
-    moreMenu.open = false;
-    documentMore.open = false;
+  if (canUseMediaReviewShortcut(event)) {
+    if (event.code === "Space") {
+      event.preventDefault();
+      void toggleMediaReviewPlayback().catch((error) => {
+        showToast(`Не удалось начать воспроизведение: ${error.message}`);
+      });
+      return;
+    }
+    if (event.code === "ArrowLeft" || event.code === "ArrowRight") {
+      event.preventDefault();
+      seekMediaReviewBy(event.code === "ArrowLeft" ? -5 : 5);
+      return;
+    }
   }
 });
 
@@ -2674,9 +2714,6 @@ toggleMediaReviewButton.addEventListener("click", () => {
     return;
   }
   if (mediaReviewOpen) {
-    disposeMediaReviewSession();
-    renderMediaReview();
-    renderEditor();
     return;
   }
 
@@ -2685,7 +2722,6 @@ toggleMediaReviewButton.addEventListener("click", () => {
   if (!session.enable() && sourceMedia?.status === "available") {
     showToast("Воспроизведение этой записи недоступно в Client.");
   }
-  documentMore.open = false;
   renderMediaReview();
   renderEditor();
 });
@@ -2697,19 +2733,36 @@ disableMediaReviewButton.addEventListener("click", () => {
 });
 
 mediaReviewPlayButton.addEventListener("click", async () => {
-  if (isRunning || !mediaReviewSnapshot.enabled) {
-    return;
-  }
   try {
-    if (mediaReviewSnapshot.media.state === "playing") {
-      mediaReviewSession?.pause();
-    } else {
-      await mediaReviewSession?.play();
-    }
+    await toggleMediaReviewPlayback();
   } catch (error) {
     showToast(`Не удалось начать воспроизведение: ${error.message}`);
   }
 });
+
+async function toggleMediaReviewPlayback() {
+  if (isRunning || !mediaReviewSnapshot.enabled) {
+    return;
+  }
+  await mediaReviewSession?.togglePlayback();
+}
+
+function seekMediaReviewBy(seconds) {
+  if (isRunning || !mediaReviewSnapshot.enabled) {
+    return;
+  }
+  const duration = mediaReviewSnapshot.media.duration;
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return;
+  }
+  const currentTime = Number.isFinite(mediaReviewSnapshot.media.currentTime)
+    ? mediaReviewSnapshot.media.currentTime
+    : 0;
+  mediaReviewSession?.seek(Math.min(duration, Math.max(0, currentTime + seconds)));
+}
+
+mediaReviewSkipBackButton.addEventListener("click", () => seekMediaReviewBy(-5));
+mediaReviewSkipForwardButton.addEventListener("click", () => seekMediaReviewBy(5));
 
 function getMediaReviewSeekTarget() {
   const duration = mediaReviewSnapshot.media.duration;
